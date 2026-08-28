@@ -1,0 +1,45 @@
+[{
+    "order_id": "CL1001",
+    "email":"maya@example.com",
+    "delivered_date": "2026-07-24",
+    "items":[
+        {
+            "item_id": "it00001",
+            "item_name": "floral long dress",
+            "category": "dress",
+            "final_sale": false
+        }
+    ]
+},
+{
+    "order_id": "CL1002",
+    "email":"maya@example.com",
+    "delivered_date": "2026-08-24",
+    "items":[
+        {
+            "item_id": "it00005",
+            "item_name": "floral short dress",
+            "category": "dress",
+            "final_sale": false
+        },
+        {
+            "item_id": "it00002",
+            "item_name": "pink swimsuit",
+            "category": "swimwear",
+            "final_sale": true
+        },
+        {
+            "item_id": "it00003",
+            "item_name": "black pants",
+            "category": "pants",
+            "final_sale": true
+        },
+        {
+            "item_id": "it00004",
+            "item_name": "white short dress",
+            "category": "dress",
+            "final_sale": false
+        }
+    ]
+}
+]
