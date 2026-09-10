@@ -1,5 +1,7 @@
+import os
 import unittest
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from src.tools.return_tools import check_return_eligibility, create_return_label
 
@@ -9,6 +11,19 @@ def delivered_days_ago(days):
 
 
 class TestCheckReturnEligibility(unittest.TestCase):
+    def test_reference_date_override(self):
+        with patch.dict(
+            os.environ,
+            {"CIDERLANE_REFERENCE_DATE": "2026-08-31"},
+        ):
+            result = check_return_eligibility(
+                "2026-08-24",
+                "dress",
+                False,
+            )
+
+        self.assertEqual(result["decision"], "standard_return")
+
     def test_standard_return_eligibility(self):
         result = check_return_eligibility(
             delivered_days_ago(1),

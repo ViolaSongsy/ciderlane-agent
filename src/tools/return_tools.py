@@ -1,4 +1,17 @@
+import os
 from datetime import datetime
+
+
+REFERENCE_DATE_ENV_VAR = "CIDERLANE_REFERENCE_DATE"
+
+
+def _current_date():
+    reference_date = os.getenv(REFERENCE_DATE_ENV_VAR)
+
+    if reference_date:
+        return datetime.strptime(reference_date, "%Y-%m-%d").date()
+
+    return datetime.now().date()
 
 
 def check_return_eligibility(
@@ -7,7 +20,7 @@ def check_return_eligibility(
     final_sale,
     reason=None,
 ):
-    today = datetime.now().date()
+    today = _current_date()
 
     delivery_date = datetime.strptime(delivered_date, "%Y-%m-%d").date()
 

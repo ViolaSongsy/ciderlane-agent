@@ -1,0 +1,129 @@
+{
+  "reference_date": "2026-08-31",
+  "cases": [
+    {
+      "id": "expired_regular_item_no_escalation",
+      "description": "An expired regular item is blocked without human review.",
+      "messages": [
+        "Hi, I want to return an item.",
+        "My order ID is CL1001 and my email is maya@example.com."
+      ],
+      "expected": {
+        "decision": "blocked",
+        "required_tool_calls": [
+          "get_order",
+          "check_return_eligibility"
+        ],
+        "forbidden_tool_calls": [
+          "create_return_label"
+        ],
+        "label_created": false,
+        "human_review_required": false,
+        "response_requirements": [
+          "Explain that the item is outside the 30-day return window.",
+          "Do not say that human review is required.",
+          "Do not claim that a return label was created."
+        ]
+      }
+    },
+    {
+      "id": "standard_return_creates_label",
+      "description": "A regular eligible item receives a return label without human review.",
+      "messages": [
+        "Hi, I want to return the white short dress.",
+        "My order ID is CL1002 and my email is maya@example.com."
+      ],
+      "expected": {
+        "decision": "standard_return",
+        "required_tool_calls": [
+          "get_order",
+          "check_return_eligibility",
+          "create_return_label"
+        ],
+        "forbidden_tool_calls": [],
+        "label_created": true,
+        "human_review_required": false,
+        "response_requirements": [
+          "Confirm that the return is eligible.",
+          "Confirm that a return label was created.",
+          "Provide the generated return-label URL.",
+          "Remind the customer that the item must be unworn, unwashed, and have its tags attached.",
+          "Do not say that human review is required."
+        ]
+      }
+    },
+    {
+      "id": "ambiguous_dress_requests_clarification",
+      "description": "A customer who says only dress must choose between two matching items.",
+      "messages": [
+        "Hi, I want to return a dress.",
+        "My order ID is CL1002 and my email is maya@example.com."
+      ],
+      "expected": {
+        "decision": null,
+        "required_tool_calls": [
+          "get_order"
+        ],
+        "forbidden_tool_calls": [
+          "check_return_eligibility",
+          "create_return_label"
+        ],
+        "label_created": false,
+        "human_review_required": false,
+        "response_requirements": [
+          "Ask the customer to choose between the white short dress and the floral short dress.",
+          "Do not state whether the return is eligible.",
+          "Do not say that human review is required."
+        ]
+      }
+    },
+    {
+      "id": "final_sale_item_is_blocked",
+      "description": "A final-sale item is blocked without creating a label or escalating.",
+      "messages": [
+        "I want to return the black pants from order CL1002. My email is maya@example.com."
+      ],
+      "expected": {
+        "decision": "blocked",
+        "required_tool_calls": [
+          "get_order",
+          "check_return_eligibility"
+        ],
+        "forbidden_tool_calls": [
+          "create_return_label"
+        ],
+        "label_created": false,
+        "human_review_required": false,
+        "response_requirements": [
+          "Explain that the pants cannot be returned because they are final sale.",
+          "Explain that damaged or wrong final-sale items are exceptions.",
+          "Do not say that human review is required.",
+          "Do not claim that a return label was created."
+        ]
+      }
+    },
+    {
+      "id": "damaged_swimwear_requires_human_review",
+      "description": "Damaged swimwear enters exception flow without creating a label.",
+      "messages": [
+        "The pink swimsuit from order CL1002 arrived damaged. My email is maya@example.com."
+      ],
+      "expected": {
+        "decision": "exception_flow",
+        "required_tool_calls": [
+          "get_order",
+          "check_return_eligibility"
+        ],
+        "forbidden_tool_calls": [
+          "create_return_label"
+        ],
+        "label_created": false,
+        "human_review_required": true,
+        "response_requirements": [
+          "Explain that the damaged swimwear requires human review.",
+          "Do not claim that a return label was created."
+        ]
+      }
+    }
+  ]
+}
