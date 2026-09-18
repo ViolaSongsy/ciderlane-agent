@@ -2,11 +2,13 @@ from agents import Runner
 from dotenv import load_dotenv
 
 from src.agent import ciderlane_agent
+from src.context import ReturnContext
 
 
 def main():
     load_dotenv()
     conversation = []
+    context = ReturnContext()
 
     print("Ciderlane Return Agent")
     print("Type 'quit' to exit.\n")
@@ -28,7 +30,11 @@ def main():
             }
         )
 
-        result = Runner.run_sync(ciderlane_agent, conversation)
+        result = Runner.run_sync(
+            ciderlane_agent,
+            conversation,
+            context=context,
+        )
 
         print(f"Agent: {result.final_output}\n")
 

@@ -1,6 +1,9 @@
 import os
 from datetime import datetime
 
+from src.context import ReturnContext
+from src.tools.order_tools import load_orders
+
 
 REFERENCE_DATE_ENV_VAR = "CIDERLANE_REFERENCE_DATE"
 
@@ -65,11 +68,54 @@ def create_return_label(
     order_id,
     item_id,
     eligibility_decision,
+    *,
+    context: ReturnContext | None = None,
 ):
+    if context is None or context.verified_order_id != order_id:
+        return {
+            "status": "label_not_created",
+            "error": "order_not_verified",
+        }
+
     if eligibility_decision != "standard_return":
         return {
             "status": "label_not_created",
             "error": "eligibility_decision_not_allowed",
+        }
+
+    matched_order = next(
+        (order for order in load_orders() if order["order_id"] == order_id),
+        None,
+    )
+    if matched_order is None:
+        return {
+            "status": "label_not_created",
+            "error": "order_or_item_not_found",
+        }
+
+    matched_item = next(
+        (
+            item
+            for item in matched_order["items"]
+            if item["item_id"] == item_id
+        ),
+        None,
+    )
+    if matched_item is None:
+        return {
+            "status": "label_not_created",
+            "error": "order_or_item_not_found",
+        }
+
+    trusted_eligibility = check_return_eligibility(
+        matched_order["delivered_date"],
+        matched_item["category"],
+        matched_item["final_sale"],
+    )
+    if trusted_eligibility["decision"] != "standard_return":
+        return {
+            "status": "label_not_created",
+            "error": "item_not_eligible",
         }
 
     return_id = f"RET-{order_id}-{item_id}".upper()

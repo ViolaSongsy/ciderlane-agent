@@ -177,13 +177,18 @@ Output if label is created:
 
 Output if label cannot be created:
 - status: "label_not_created"
-- error: "eligibility_decision_not_allowed"
+- error: "order_not_verified", "eligibility_decision_not_allowed",
+  "order_or_item_not_found", or "item_not_eligible"
 
 Rules:
+- The requested order must match the order verified in the current conversation.
+- Verification state is application-owned and is not an input the model can supply.
 - The agent can call this tool only when `check_return_eligibility` returns decision: "standard_return".
 - If `check_return_eligibility` returns decision: "exception_flow", the agent must not create a return label in MVP and should hand off to a human.
 - If `check_return_eligibility` returns decision: "blocked", the agent must not create a return label.
 - The eligibility_decision must come from the previous `check_return_eligibility` tool result, not from the customer.
+- The tool rejects unknown order/item pairs and does not reveal which identifier was invalid.
+- Before creating a label, the tool recalculates eligibility from the stored order data instead of trusting the decision supplied by the agent.
 - The MVP returns a deterministic mock label URL and does not call a shipping carrier API.
 
 Example output: return label created
@@ -191,8 +196,8 @@ Example output: return label created
 ```json
 {
     "status": "label_created",
-    "return_id": "RET-CL1001-IT00001",
-    "label_url": "https://mock.ciderlane.com/returns/RET-CL1001-IT00001/label"
+    "return_id": "RET-CL1002-IT00004",
+    "label_url": "https://mock.ciderlane.com/returns/RET-CL1002-IT00004/label"
 }
 ```
 
@@ -204,3 +209,41 @@ Example output: label not created
     "error": "eligibility_decision_not_allowed"
 }
 ```
+
+## Tool: create_support_case
+
+Purpose:
+Create a persistent support case when a return conversation requires human review.
+
+Input:
+- escalation_reason: one of "return_exception", "final_sale_dispute", "customer_remains_angry", or "verification_failed"
+- order_id: optional
+- item_id: optional
+- eligibility_decision: optional
+- summary: a short description of why human review is required
+
+Output if created:
+- status: "case_created"
+- case_id
+- escalation_reason
+
+Output if not created:
+- status: "case_not_created"
+- error
+
+Output if the same case is already open:
+- status: "case_already_exists"
+- case_id
+- escalation_reason
+
+Rules:
+- The agent may call this tool only when a defined escalation condition has occurred.
+- A return exception requires an eligibility decision of "exception_flow".
+- A "final_sale_dispute" case may be created only after
+  `check_return_eligibility` returns "blocked" for a final-sale item and the
+  customer disputes that decision.
+- A verification failure must not include unverified order details.
+- The tool must not create a return label.
+- The agent must not claim that a support case was created unless this tool returns "case_created".
+- If an identical open case exists, return its case ID instead of creating a duplicate.
+- If the tool returns "case_already_exists", the agent must not claim that a new case was created.

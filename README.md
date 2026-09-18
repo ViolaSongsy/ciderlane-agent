@@ -8,7 +8,7 @@ Ciderlane Return Agent is an evaluated Python customer-support agent for a ficti
 - Identifies the specific item the customer wants to return
 - Checks eligibility against the 30-day, final-sale, and swimwear policies
 - Creates a mock return label for eligible standard returns
-- Flags policy exceptions that require human review
+- Creates persistent support cases for policy exceptions that require human review
 - Protects order information until the customer is verified
 
 ## Why I Built It

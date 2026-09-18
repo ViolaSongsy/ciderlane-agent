@@ -3,11 +3,16 @@ import unittest
 from datetime import date, timedelta
 from unittest.mock import patch
 
+from src.context import ReturnContext
 from src.tools.return_tools import check_return_eligibility, create_return_label
 
 
 def delivered_days_ago(days):
     return (date.today() - timedelta(days=days)).isoformat()
+
+
+def verified_context(order_id):
+    return ReturnContext(verified_order_id=order_id)
 
 
 class TestCheckReturnEligibility(unittest.TestCase):
@@ -141,24 +146,86 @@ class TestCheckReturnEligibility(unittest.TestCase):
 
 class TestCreateReturnLabel(unittest.TestCase):
     def test_standard_return_creates_label(self):
-        result = create_return_label(
-            "CL1001",
-            "it00001",
-            "standard_return",
-        )
+        with patch.dict(
+            os.environ,
+            {"CIDERLANE_REFERENCE_DATE": "2026-08-31"},
+        ):
+            result = create_return_label(
+                "CL1002",
+                "it00004",
+                "standard_return",
+                context=verified_context("CL1002"),
+            )
 
         self.assertEqual(result["status"], "label_created")
-        self.assertEqual(result["return_id"], "RET-CL1001-IT00001")
+        self.assertEqual(result["return_id"], "RET-CL1002-IT00004")
         self.assertEqual(
             result["label_url"],
-            "https://mock.ciderlane.com/returns/RET-CL1001-IT00001/label",
+            "https://mock.ciderlane.com/returns/RET-CL1002-IT00004/label",
         )
+
+    def test_unknown_order_does_not_create_label(self):
+        result = create_return_label(
+            "NO_SUCH_ORDER",
+            "NO_SUCH_ITEM",
+            "standard_return",
+            context=verified_context("NO_SUCH_ORDER"),
+        )
+
+        self.assertEqual(result["status"], "label_not_created")
+        self.assertEqual(result["error"], "order_or_item_not_found")
+        self.assertNotIn("label_url", result)
+
+    def test_unknown_item_does_not_create_label(self):
+        result = create_return_label(
+            "CL1002",
+            "NO_SUCH_ITEM",
+            "standard_return",
+            context=verified_context("CL1002"),
+        )
+
+        self.assertEqual(result["status"], "label_not_created")
+        self.assertEqual(result["error"], "order_or_item_not_found")
+        self.assertNotIn("label_url", result)
+
+    def test_asserted_standard_return_cannot_override_policy(self):
+        with patch.dict(
+            os.environ,
+            {"CIDERLANE_REFERENCE_DATE": "2026-08-31"},
+        ):
+            result = create_return_label(
+                "CL1002",
+                "it00003",
+                "standard_return",
+                context=verified_context("CL1002"),
+            )
+
+        self.assertEqual(result["status"], "label_not_created")
+        self.assertEqual(result["error"], "item_not_eligible")
+        self.assertNotIn("label_url", result)
+
+    def test_asserted_standard_return_cannot_override_expired_window(self):
+        with patch.dict(
+            os.environ,
+            {"CIDERLANE_REFERENCE_DATE": "2026-08-31"},
+        ):
+            result = create_return_label(
+                "CL1001",
+                "it00001",
+                "standard_return",
+                context=verified_context("CL1001"),
+            )
+
+        self.assertEqual(result["status"], "label_not_created")
+        self.assertEqual(result["error"], "item_not_eligible")
+        self.assertNotIn("label_url", result)
 
     def test_blocked_return_does_not_create_label(self):
         result = create_return_label(
             "CL1001",
             "it00001",
             "blocked",
+            context=verified_context("CL1001"),
         )
 
         self.assertEqual(result["status"], "label_not_created")
@@ -170,6 +237,7 @@ class TestCreateReturnLabel(unittest.TestCase):
             "CL1002",
             "it00002",
             "exception_flow",
+            context=verified_context("CL1002"),
         )
 
         self.assertEqual(result["status"], "label_not_created")

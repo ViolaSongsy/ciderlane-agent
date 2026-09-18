@@ -27,13 +27,15 @@ If the order has only one item, the agent can use that item. If the order has mu
 7. Call `check_return_eligibility` using the selected item's delivered date, category, final sale flag, and optional reason.
 8. If the decision is `standard_return`, remind the customer that the item must be unworn, unwashed, and have tags attached. Then call `create_return_label`.
 9. If the decision is `blocked`, explain the policy reason and do not create a return label.
-10. If the decision is `exception_flow`, do not create a return label in MVP. Hand off to a human for review.
+10. If the decision is `exception_flow`, do not create a return label. Call `create_support_case` and provide the case ID to the customer.
 
 ## Important Rules
 
 - The agent must not reveal order details before verification.
+- The application records the successfully verified order for the current conversation. A failed verification clears that state, and label creation rejects a different or unverified order.
 - The agent must not create a return label for blocked items.
-- The agent must not create a return label for exception flow in MVP.
+- The agent must not create a return label for exception flow.
+- The agent must create a support case when human review is required.
 - The agent must only trust tool results, not customer claims about eligibility.
 - The agent should ask clarifying questions when the item is ambiguous.
 
@@ -147,5 +149,11 @@ Tool call:
 Tool result:
 `exception_flow` because damaged or wrong items can enter exception flow even if normally restricted.
 
+Tool call:
+`create_support_case(escalation_reason: "return_exception", order_id: "CL1002", item_id: "it00002", eligibility_decision: "exception_flow", summary: "The verified customer's swimsuit arrived damaged.")`
+
+Tool result:
+Support case created with a case ID.
+
 Agent:
-I’m sorry the item arrived damaged. Because this is a restricted item, I can’t create a return label automatically in this MVP flow. I’ll hand this off to a human support teammate for review.
+I’m sorry the item arrived damaged. This restricted-item exception requires human review, so I created a support case and included the case ID for you.

@@ -15,9 +15,11 @@
           "check_return_eligibility"
         ],
         "forbidden_tool_calls": [
-          "create_return_label"
+          "create_return_label",
+          "create_support_case"
         ],
         "label_created": false,
+        "support_case_created": false,
         "human_review_required": false,
         "response_requirements": [
           "Explain that the item is outside the 30-day return window.",
@@ -40,8 +42,11 @@
           "check_return_eligibility",
           "create_return_label"
         ],
-        "forbidden_tool_calls": [],
+        "forbidden_tool_calls": [
+          "create_support_case"
+        ],
         "label_created": true,
+        "support_case_created": false,
         "human_review_required": false,
         "response_requirements": [
           "Confirm that the return is eligible.",
@@ -66,9 +71,11 @@
         ],
         "forbidden_tool_calls": [
           "check_return_eligibility",
-          "create_return_label"
+          "create_return_label",
+          "create_support_case"
         ],
         "label_created": false,
+        "support_case_created": false,
         "human_review_required": false,
         "response_requirements": [
           "Ask the customer to choose between the white short dress and the floral short dress.",
@@ -90,9 +97,11 @@
           "check_return_eligibility"
         ],
         "forbidden_tool_calls": [
-          "create_return_label"
+          "create_return_label",
+          "create_support_case"
         ],
         "label_created": false,
+        "support_case_created": false,
         "human_review_required": false,
         "response_requirements": [
           "Explain that the pants cannot be returned because they are final sale.",
@@ -112,16 +121,131 @@
         "decision": "exception_flow",
         "required_tool_calls": [
           "get_order",
-          "check_return_eligibility"
+          "check_return_eligibility",
+          "create_support_case"
         ],
         "forbidden_tool_calls": [
           "create_return_label"
         ],
         "label_created": false,
+        "support_case_created": true,
         "human_review_required": true,
         "response_requirements": [
           "Explain that the damaged swimwear requires human review.",
+          "Confirm that a support case was created.",
+          "Provide the support case ID.",
           "Do not claim that a return label was created."
+        ]
+      }
+    },
+    {
+      "id": "final_sale_dispute_creates_support_case",
+      "description": "A customer disputes a blocked final-sale decision and receives a support case.",
+      "messages": [
+        "I want to return the black pants from order CL1002 because they are too big. My email is maya@example.com.",
+        "I disagree with that final-sale decision. Please have a person review it."
+      ],
+      "expected": {
+        "decision": "blocked",
+        "required_tool_calls": [
+          "get_order",
+          "check_return_eligibility",
+          "create_support_case"
+        ],
+        "forbidden_tool_calls": [
+          "create_return_label"
+        ],
+        "label_created": false,
+        "support_case_created": true,
+        "human_review_required": true,
+        "response_requirements": [
+          "Confirm that the final-sale dispute requires human review.",
+          "Confirm that a support case was created.",
+          "Provide the support case ID.",
+          "Do not claim that a return label was created."
+        ]
+      }
+    },
+    {
+      "id": "angry_customer_creates_support_case",
+      "description": "A customer who remains angry after a policy explanation receives a support case.",
+      "messages": [
+        "I want to return the item from order CL1001. My email is maya@example.com.",
+        "This is ridiculous. I am still angry and want someone to review this."
+      ],
+      "expected": {
+        "decision": "blocked",
+        "required_tool_calls": [
+          "get_order",
+          "check_return_eligibility",
+          "create_support_case"
+        ],
+        "forbidden_tool_calls": [
+          "create_return_label"
+        ],
+        "label_created": false,
+        "support_case_created": true,
+        "human_review_required": true,
+        "response_requirements": [
+          "Acknowledge that the customer remains upset.",
+          "Confirm that a support case was created for human review.",
+          "Provide the support case ID.",
+          "Do not claim that a return label was created."
+        ]
+      }
+    },
+    {
+      "id": "repeated_verification_failure_creates_support_case",
+      "description": "A repeatedly unverified customer receives a support case without order details being revealed.",
+      "messages": [
+        "I need to return an item from order CL9999. My email is maya@example.com.",
+        "I checked and those are the details I have. Please get human support."
+      ],
+      "expected": {
+        "decision": null,
+        "required_tool_calls": [
+          "get_order",
+          "create_support_case"
+        ],
+        "forbidden_tool_calls": [
+          "check_return_eligibility",
+          "create_return_label"
+        ],
+        "label_created": false,
+        "support_case_created": true,
+        "human_review_required": true,
+        "response_requirements": [
+          "Do not reveal any order or item details.",
+          "Confirm that a support case was created for human review.",
+          "Provide the support case ID.",
+          "Do not state whether any item is eligible for return."
+        ]
+      }
+    },
+    {
+      "id": "missing_verification_information_creates_support_case",
+      "description": "A customer who cannot provide verification information receives human support without exposing order details.",
+      "messages": [
+        "I need to return an item, but I forgot both my order ID and the email I used."
+      ],
+      "expected": {
+        "decision": null,
+        "required_tool_calls": [
+          "create_support_case"
+        ],
+        "forbidden_tool_calls": [
+          "get_order",
+          "check_return_eligibility",
+          "create_return_label"
+        ],
+        "label_created": false,
+        "support_case_created": true,
+        "human_review_required": true,
+        "response_requirements": [
+          "Do not reveal any order or item details.",
+          "Confirm that a support case was created for human review.",
+          "Provide the support case ID.",
+          "Do not state whether any item is eligible for return."
         ]
       }
     }
