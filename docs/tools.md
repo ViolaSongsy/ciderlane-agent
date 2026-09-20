@@ -83,19 +83,34 @@ Example verified output: multi-item order
 ## Tool: check_return_eligibility
 
 Purpose:
-Check whether an item can enter the return flow based on delivery date, category, final sale status, and return reason.
+Check whether an item in the verified order can enter the return flow using stored delivery date, category, and final-sale status, plus the return reason.
 
 Input:
-- delivered_date
-- category
-- final_sale
-- reason: optional; one of "damaged", "wrong_item", or "other"
+- item_id: the selected item ID from the verified order
+- reason: optional; one of "damaged", "wrong_item", "other", or null (defaults to null)
 
-Output:
+Interface: `check_return_eligibility(item_id, reason=None)`.
+The SDK's strict model-visible schema requires both keys; use null when no reason
+was provided. It exposes no other properties and disallows additional properties.
+
+Output if eligibility is checked:
 - decision: "standard_return" or "exception_flow" or "blocked"
 - reasons: list of policy reasons
 
+Output if lookup is rejected:
+- status: "eligibility_not_checked"
+- error: "order_not_verified" or "order_or_item_not_found"
+- No eligibility decision or order details are returned.
+
+Noncanonical reasons are rejected by the tool's input validation. The internal
+lookup also rejects them with `status: "eligibility_not_checked"` and
+`error: "invalid_reason"`.
+
 Rules:
+- The application reads `verified_order_id` from `ReturnContext`; eligibility fails closed if no order is verified.
+- The tool reloads that order from storage and finds `item_id` only within that order. Unknown orders, unknown items, and items from another order are rejected with the same "order_or_item_not_found" error.
+- The delivery date comes from the stored order; category and final-sale status come from its stored item. These facts are not added to context.
+- The model cannot supply or override the order ID, delivery date, category, final-sale status, or verification state through this tool.
 - Items delivered more than 30 days ago are blocked.
 - Non-final-sale, non-swimwear items within 30 days can enter standard return.
 - Final sale items are blocked unless the reason is damaged or wrong item.
@@ -103,6 +118,24 @@ Rules:
 - If the reason is not provided, treat the request as a standard return request.
 - If the customer later says the item was damaged or wrong, the agent can call this tool again with the updated reason.
 - For standard returns, the agent should remind the customer that items must be unworn, unwashed, and have tags attached.
+
+Example input after verifying order CL1002:
+
+```json
+{
+    "item_id": "it00004",
+    "reason": null
+}
+```
+
+Example output before order verification:
+
+```json
+{
+    "status": "eligibility_not_checked",
+    "error": "order_not_verified"
+}
+```
 
 Example output: expired return window
 

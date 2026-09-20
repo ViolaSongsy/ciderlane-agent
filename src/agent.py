@@ -43,7 +43,12 @@ tool results. Ask only for the minimum missing information needed to continue.
 # Eligibility
 
 - Always use check_return_eligibility. Never decide eligibility yourself.
-- Use delivered_date, category, and final_sale only from the verified order.
+- Call check_return_eligibility with only item_id and the optional reason.
+  The application uses its verified order ID and loads the stored delivery date,
+  category, and final-sale status. These facts are not tool inputs.
+- If the tool returns "order_not_verified", complete verification with get_order
+  before checking again. If it returns "order_or_item_not_found", confirm the
+  selected item from the verified order before checking again.
 - Do not require a return reason before the first eligibility check.
 - If no reason was provided, pass null as the reason.
 - Map an explicitly stated damaged item to "damaged".

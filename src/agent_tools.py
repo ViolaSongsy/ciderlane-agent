@@ -4,7 +4,11 @@ from agents import RunContextWrapper, function_tool
 
 from src.context import ReturnContext
 from src.tools.order_tools import get_order
-from src.tools.return_tools import check_return_eligibility, create_return_label
+from src.tools.return_tools import (
+    ReturnReason,
+    check_return_eligibility,
+    create_return_label,
+)
 from src.tools.support_tools import create_support_case
 
 @function_tool(name_override="get_order")
@@ -31,20 +35,19 @@ def get_order_tool(
 
 @function_tool(name_override="check_return_eligibility")
 def check_return_eligibility_tool(
-    delivered_date: str,
-    category: str,
-    final_sale: bool,
-    reason: str | None = None,
+    ctx: RunContextWrapper[ReturnContext],
+    item_id: str,
+    reason: ReturnReason | None = None,
 ) -> dict:
-    """Check whether an item can enter the return workflow.
+    """Check an item in the verified order using its stored eligibility facts.
+
+    Call get_order first to verify the order for this conversation.
 
     Args:
-        delivered_date: Delivery date in YYYY-MM-DD format.
-        category: The item's product category.
-        final_sale: Whether the item was marked final sale.
-        reason: Canonical return reason, or None if not provided.
+        item_id: The selected item ID from the verified order.
+        reason: Canonical return reason: damaged, wrong_item, other, or None.
     """
-    return check_return_eligibility(delivered_date,category,final_sale,reason)
+    return check_return_eligibility(item_id, reason, context=ctx.context)
 
 
 @function_tool(name_override="create_return_label")

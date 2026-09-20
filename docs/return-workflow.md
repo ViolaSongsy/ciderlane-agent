@@ -24,7 +24,7 @@ If the order has only one item, the agent can use that item. If the order has mu
 4. If `get_order` returns `verified: false`, do not reveal order details. Ask the customer to check the order ID and email.
 5. If the order is verified, identify which item the customer wants to return.
 6. If the item is ambiguous, ask the customer to choose the specific item.
-7. Call `check_return_eligibility` using the selected item's delivered date, category, final sale flag, and optional reason.
+7. Call `check_return_eligibility(item_id, reason=None)` with only the selected item ID and a canonical reason (`damaged`, `wrong_item`, `other`, or null). The application reads the verified order ID from `ReturnContext`, reloads that order, and uses its stored delivery date and the item's category and final-sale status.
 8. If the decision is `standard_return`, remind the customer that the item must be unworn, unwashed, and have tags attached. Then call `create_return_label`.
 9. If the decision is `blocked`, explain the policy reason and do not create a return label.
 10. If the decision is `exception_flow`, do not create a return label. Call `create_support_case` and provide the case ID to the customer.
@@ -33,6 +33,8 @@ If the order has only one item, the agent can use that item. If the order has mu
 
 - The agent must not reveal order details before verification.
 - The application records the successfully verified order for the current conversation. A failed verification clears that state, and label creation rejects a different or unverified order.
+- Eligibility fails closed when there is no verified order, and rejects items outside that order. An `eligibility_not_checked` response contains no policy decision: for `order_not_verified`, complete verification before retrying; for `order_or_item_not_found`, confirm the selected item from the verified order before retrying.
+- Eligibility inputs contain only `item_id` and `reason`. The model cannot supply or override the order ID, delivery date, category, final-sale status, or verification state. Only `verified_order_id` is stored in `ReturnContext`.
 - The agent must not create a return label for blocked items.
 - The agent must not create a return label for exception flow.
 - The agent must create a support case when human review is required.
@@ -60,7 +62,7 @@ Agent:
 I found the floral long dress in your order. I’ll check whether it’s eligible for return.
 
 Tool call:
-`check_return_eligibility(delivered_date: "2026-07-24", category: "dress", final_sale: false)`
+`check_return_eligibility(item_id: "it00001", reason: null)`
 
 Tool result:
 `blocked` because the item is outside the 30-day return window.
@@ -95,7 +97,7 @@ Agent:
 Thanks. I’ll check whether the white short dress is eligible for return.
 
 Tool call:
-`check_return_eligibility(delivered_date: "2026-08-24", category: "dress", final_sale: false)`
+`check_return_eligibility(item_id: "it00004", reason: null)`
 
 Tool result:
 `standard_return` because the item is within the 30-day return window, is not final sale, and is not restricted swimwear.
@@ -124,7 +126,7 @@ Tool result:
 Order verified. Black pants found.
 
 Tool call:
-`check_return_eligibility(delivered_date: "2026-08-24", category: "pants", final_sale: true)`
+`check_return_eligibility(item_id: "it00003", reason: null)`
 
 Tool result:
 `blocked` because final sale items cannot be returned unless they arrived damaged or wrong.
@@ -144,7 +146,7 @@ Tool result:
 Order verified. Pink swimsuit found.
 
 Tool call:
-`check_return_eligibility(delivered_date: "2026-08-24", category: "swimwear", final_sale: true, reason: "damaged")`
+`check_return_eligibility(item_id: "it00002", reason: "damaged")`
 
 Tool result:
 `exception_flow` because damaged or wrong items can enter exception flow even if normally restricted.

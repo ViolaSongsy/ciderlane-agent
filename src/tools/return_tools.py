@@ -1,11 +1,13 @@
 import os
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 
 from src.context import ReturnContext
 from src.tools.order_tools import load_orders
 
 
 REFERENCE_DATE_ENV_VAR = "CIDERLANE_REFERENCE_DATE"
+ReturnReason = Literal["damaged", "wrong_item", "other"]
 
 
 def _current_date():
@@ -18,13 +20,63 @@ def _current_date():
 
 
 def check_return_eligibility(
+    item_id: str,
+    reason: ReturnReason | None = None,
+    *,
+    context: ReturnContext | None = None,
+) -> dict:
+    """Check an item using only the verified order's stored eligibility facts."""
+    if context is None or not context.verified_order_id:
+        return {
+            "status": "eligibility_not_checked",
+            "error": "order_not_verified",
+        }
+
+    if reason not in (None, "damaged", "wrong_item", "other"):
+        return {
+            "status": "eligibility_not_checked",
+            "error": "invalid_reason",
+        }
+
+    matched_order = next(
+        (order for order in load_orders()
+         if order["order_id"] == context.verified_order_id),
+        None,
+    )
+    if matched_order is None:
+        return {
+            "status": "eligibility_not_checked",
+            "error": "order_or_item_not_found",
+        }
+
+    matched_item = next(
+        (item for item in matched_order["items"] if item["item_id"] == item_id),
+        None,
+    )
+    if matched_item is None:
+        return {
+            "status": "eligibility_not_checked",
+            "error": "order_or_item_not_found",
+        }
+
+    return evaluate_return_policy(
+        matched_order["delivered_date"],
+        matched_item["category"],
+        matched_item["final_sale"],
+        reason,
+        today=_current_date(),
+    )
+
+
+def evaluate_return_policy(
     delivered_date,
     category,
     final_sale,
-    reason=None,
+    reason: ReturnReason | None = None,
+    *,
+    today: date,
 ):
-    today = _current_date()
-
+    """Apply deterministic policy to trusted facts without reading state."""
     delivery_date = datetime.strptime(delivered_date, "%Y-%m-%d").date()
 
     difference = today - delivery_date
@@ -107,10 +159,11 @@ def create_return_label(
             "error": "order_or_item_not_found",
         }
 
-    trusted_eligibility = check_return_eligibility(
+    trusted_eligibility = evaluate_return_policy(
         matched_order["delivered_date"],
         matched_item["category"],
         matched_item["final_sale"],
+        today=_current_date(),
     )
     if trusted_eligibility["decision"] != "standard_return":
         return {
