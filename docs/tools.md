@@ -278,5 +278,6 @@ Rules:
 - A verification failure must not include unverified order details.
 - The tool must not create a return label.
 - The agent must not claim that a support case was created unless this tool returns "case_created".
-- If an identical open case exists, return its case ID instead of creating a duplicate.
+- The application reads `conversation_id` from `ReturnContext`; it is not a model-visible input.
+- If an identical open case exists in the same conversation, return its case ID instead of creating a duplicate. Identical cases in different conversations remain separate.
 - If the tool returns "case_already_exists", the agent must not claim that a new case was created.

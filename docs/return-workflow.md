@@ -34,7 +34,7 @@ If the order has only one item, the agent can use that item. If the order has mu
 - The agent must not reveal order details before verification.
 - The application records the successfully verified order for the current conversation. A failed verification clears that state, and label creation rejects a different or unverified order.
 - Eligibility fails closed when there is no verified order, and rejects items outside that order. An `eligibility_not_checked` response contains no policy decision: for `order_not_verified`, complete verification before retrying; for `order_or_item_not_found`, confirm the selected item from the verified order before retrying.
-- Eligibility inputs contain only `item_id` and `reason`. The model cannot supply or override the order ID, delivery date, category, final-sale status, or verification state. Only `verified_order_id` is stored in `ReturnContext`.
+- Eligibility inputs contain only `item_id` and `reason`. The model cannot supply or override the order ID, delivery date, category, final-sale status, or verification state. `ReturnContext` stores `verified_order_id` and an application-generated `conversation_id` that remains stable across turns and scopes support-case idempotency.
 - The agent must not create a return label for blocked items.
 - The agent must not create a return label for exception flow.
 - The agent must create a support case when human review is required.

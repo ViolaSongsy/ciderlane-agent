@@ -25,6 +25,8 @@ def create_support_case(
     item_id=None,
     eligibility_decision=None,
     database_path=None,
+    *,
+    conversation_id: str,
 ):
     if escalation_reason not in ALLOWED_ESCALATION_REASONS:
         return {
@@ -69,13 +71,15 @@ def create_support_case(
             """
             SELECT case_id, escalation_reason
             FROM support_cases
-            WHERE escalation_reason = ?
+            WHERE conversation_id = ?
+              AND escalation_reason = ?
               AND order_id IS ?
               AND item_id IS ?
               AND eligibility_decision IS ?
               AND status = 'open'
             """,
             (
+                conversation_id,
                 escalation_reason,
                 order_id,
                 item_id,
@@ -97,16 +101,18 @@ def create_support_case(
                 """
                 INSERT INTO support_cases (
                     case_id,
+                    conversation_id,
                     escalation_reason,
                     order_id,
                     item_id,
                     eligibility_decision,
                     summary
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     case_id,
+                    conversation_id,
                     escalation_reason,
                     order_id,
                     item_id,
@@ -119,13 +125,15 @@ def create_support_case(
                 """
                 SELECT case_id, escalation_reason
                 FROM support_cases
-                WHERE escalation_reason = ?
+                WHERE conversation_id = ?
+                  AND escalation_reason = ?
                   AND order_id IS ?
                   AND item_id IS ?
                   AND eligibility_decision IS ?
                   AND status = 'open'
                 """,
                 (
+                    conversation_id,
                     escalation_reason,
                     order_id,
                     item_id,

@@ -76,6 +76,7 @@ def create_return_label_tool(
 
 @function_tool(name_override="create_support_case")
 def create_support_case_tool(
+    ctx: RunContextWrapper[ReturnContext],
     escalation_reason: Literal[
         "return_exception",
         "final_sale_dispute",
@@ -97,6 +98,7 @@ def create_support_case_tool(
         eligibility_decision: The decision returned by check_return_eligibility.
     """
     return create_support_case(
+        conversation_id=ctx.context.conversation_id,
         escalation_reason=escalation_reason,
         summary=summary,
         order_id=order_id,
