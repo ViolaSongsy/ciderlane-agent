@@ -1,13 +1,14 @@
 import json
 import os
 import unittest
+from dataclasses import FrozenInstanceError
 from unittest.mock import patch
 
 from agents import RunContextWrapper
 from agents.tool_context import ToolContext
 
 from src.agent_tools import check_return_eligibility_tool, get_order_tool
-from src.context import ReturnContext
+from src.context import ReturnContext, ReturnEvaluation
 from src.tools.order_tools import load_orders
 from src.tools.return_tools import check_return_eligibility
 
@@ -84,6 +85,77 @@ class TestTrustedEligibilityLookup(unittest.IsolatedAsyncioTestCase):
             with self.subTest(arguments=arguments):
                 result = await self.invoke(check_return_eligibility_tool, arguments)
                 self.assertEqual(result["decision"], "standard_return")
+
+        self.assertEqual(
+            self.ctx.context.current_evaluation,
+            ReturnEvaluation(
+                order_id="CL1002",
+                item_id="it00004",
+                decision="standard_return",
+                policy_codes=(),
+            ),
+        )
+
+    async def test_later_successful_evaluation_replaces_previous_evaluation(self):
+        await self.verify()
+        await self.invoke(
+            check_return_eligibility_tool,
+            {"item_id": "it00003", "reason": None},
+        )
+        result = await self.invoke(
+            check_return_eligibility_tool,
+            {"item_id": "it00002", "reason": "damaged"},
+        )
+
+        self.assertEqual(result["decision"], "exception_flow")
+        self.assertEqual(
+            self.ctx.context.current_evaluation,
+            ReturnEvaluation(
+                order_id="CL1002",
+                item_id="it00002",
+                decision="exception_flow",
+                policy_codes=(
+                    "restricted_swimwear",
+                    "damaged_item_exception",
+                ),
+            ),
+        )
+
+    async def test_failed_lookup_clears_previous_evaluation(self):
+        await self.verify()
+        await self.invoke(
+            check_return_eligibility_tool,
+            {"item_id": "it00003", "reason": None},
+        )
+
+        result = await self.invoke(
+            check_return_eligibility_tool,
+            {"item_id": "NO_SUCH_ITEM", "reason": None},
+        )
+
+        self.assert_not_checked(result, "order_or_item_not_found")
+        self.assertIsNone(self.ctx.context.current_evaluation)
+
+    async def test_evaluation_does_not_leak_between_conversations(self):
+        await self.verify()
+        await self.invoke(
+            check_return_eligibility_tool,
+            {"item_id": "it00003", "reason": None},
+        )
+
+        other_context = ReturnContext()
+        self.assertIsNotNone(self.ctx.context.current_evaluation)
+        self.assertIsNone(other_context.current_evaluation)
+
+    async def test_stored_evaluation_is_immutable(self):
+        await self.verify()
+        await self.invoke(
+            check_return_eligibility_tool,
+            {"item_id": "it00003", "reason": None},
+        )
+
+        with self.assertRaises(FrozenInstanceError):
+            self.ctx.context.current_evaluation.decision = "standard_return"
 
     async def test_stored_facts_cannot_be_overridden(self):
         cases = (
@@ -163,12 +235,14 @@ class TestTrustedEligibilityLookup(unittest.IsolatedAsyncioTestCase):
             ("CL1002", "NO_SUCH_ITEM"),
         ):
             with self.subTest(order_id=order_id, item_id=item_id):
+                result_context = ReturnContext(verified_order_id=order_id)
                 with patch("src.tools.return_tools.evaluate_return_policy") as policy:
                     result = check_return_eligibility(
-                        item_id, context=ReturnContext(verified_order_id=order_id),
+                        item_id, context=result_context,
                     )
 
                 self.assert_not_checked(result, "order_or_item_not_found")
+                self.assertIsNone(result_context.current_evaluation)
                 policy.assert_not_called()
 
     async def test_failed_verification_prevents_eligibility(self):

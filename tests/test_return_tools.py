@@ -34,6 +34,7 @@ class TestReturnPolicy(unittest.TestCase):
             )
 
         self.assertEqual(result["decision"], "standard_return")
+        self.assertEqual(result["policy_codes"], [])
 
     def test_standard_return_eligibility(self):
         result = evaluate_return_policy(
@@ -66,6 +67,10 @@ class TestReturnPolicy(unittest.TestCase):
             result["reasons"],
             ["Swimwear cannot be returned unless it arrived damaged or wrong."],
         )
+        self.assertEqual(
+            result["policy_codes"],
+            ["restricted_swimwear"],
+        )
 
     def test_final_sale_eligibility(self):
         result = evaluate_return_policy(
@@ -80,6 +85,7 @@ class TestReturnPolicy(unittest.TestCase):
             result["reasons"],
             ["Final sale items cannot be returned unless they arrived damaged or wrong."],
         )
+        self.assertEqual(result["policy_codes"], ["final_sale"])
 
     def test_final_sale_damaged_eligibility(self):
         result = evaluate_return_policy(
@@ -95,6 +101,10 @@ class TestReturnPolicy(unittest.TestCase):
             result["reasons"],
             ["Damaged or wrong items can enter exception flow even if normally restricted."],
         )
+        self.assertEqual(
+            result["policy_codes"],
+            ["final_sale", "damaged_item_exception"],
+        )
 
     def test_swimwear_wrong_item_eligibility(self):
         result = evaluate_return_policy(
@@ -109,6 +119,10 @@ class TestReturnPolicy(unittest.TestCase):
         self.assertEqual(
             result["reasons"],
             ["Damaged or wrong items can enter exception flow even if normally restricted."],
+        )
+        self.assertEqual(
+            result["policy_codes"],
+            ["restricted_swimwear", "wrong_item_exception"],
         )
 
     def test_regular_damaged_item_uses_standard_return(self):
@@ -157,6 +171,7 @@ class TestReturnPolicy(unittest.TestCase):
             result["reasons"],
             ["The item is outside the 30-day return window."],
         )
+        self.assertEqual(result["policy_codes"], ["outside_return_window"])
 
 
 class TestCreateReturnLabel(unittest.TestCase):

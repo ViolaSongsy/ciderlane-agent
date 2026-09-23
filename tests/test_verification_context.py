@@ -6,7 +6,11 @@ from unittest.mock import patch
 from agents import RunContextWrapper
 from agents.tool_context import ToolContext
 
-from src.agent_tools import create_return_label_tool, get_order_tool
+from src.agent_tools import (
+    check_return_eligibility_tool,
+    create_return_label_tool,
+    get_order_tool,
+)
 from src.context import ReturnContext
 from src.tools.return_tools import create_return_label
 
@@ -82,10 +86,31 @@ class TestVerificationContext(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_reverification_clears_previous_verification(self):
         await self.verify()
+        await self.invoke(
+            check_return_eligibility_tool,
+            self.ctx,
+            {"item_id": "it00004", "reason": None},
+        )
+        self.assertIsNotNone(self.ctx.context.current_evaluation)
+
         await self.verify(email="wrong@example.com")
 
         self.assertIsNone(self.ctx.context.verified_order_id)
+        self.assertIsNone(self.ctx.context.current_evaluation)
         self.assert_not_verified(await self.create_label())
+
+    async def test_new_verification_attempt_clears_current_evaluation(self):
+        await self.verify()
+        await self.invoke(
+            check_return_eligibility_tool,
+            self.ctx,
+            {"item_id": "it00003", "reason": None},
+        )
+        self.assertIsNotNone(self.ctx.context.current_evaluation)
+
+        await self.verify()
+
+        self.assertIsNone(self.ctx.context.current_evaluation)
 
     async def test_same_conversation_keeps_verification(self):
         await self.verify()

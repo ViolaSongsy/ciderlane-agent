@@ -207,7 +207,7 @@ def grade_case(
             f"got {actual_label_created!r}"
         )
 
-    support_case_output = latest_dict_output(case_run, "create_support_case")
+    support_case_output = latest_dict_output(case_run, "request_human_support")
     actual_support_case_created = support_case_output.get("status") in {
         "case_created",
         "case_already_exists",

@@ -3,8 +3,8 @@ from agents import Agent
 from src.agent_tools import (
     check_return_eligibility_tool,
     create_return_label_tool,
-    create_support_case_tool,
     get_order_tool,
+    request_human_support_tool,
 )
 
 AGENT_INSTRUCTIONS = """
@@ -25,12 +25,11 @@ tool results. Ask only for the minimum missing information needed to continue.
 - Never reveal order information when verification fails.
 - If verification fails, ask the customer to check the order ID and email once.
 - If the customer confirms the same information or verification fails again, call
-  create_support_case with escalation_reason "verification_failed". Do not include
-  an item ID, eligibility decision, or unverified order details in the summary.
+  request_human_support with escalation_reason "verification_failed". Do not
+  include unverified order details in the summary.
 - If the customer explicitly says they cannot provide the order ID or email, call
-  create_support_case with escalation_reason "verification_failed". Include only
-  an order ID the customer supplied; do not invent one or include an item ID,
-  eligibility decision, or unverified order details in the summary.
+  request_human_support with escalation_reason "verification_failed". Do not
+  include unverified order details in the summary.
 
 # Item Selection
 
@@ -71,10 +70,10 @@ tool results. Ask only for the minimum missing information needed to continue.
 - If the item is blocked only because it is outside the 30-day return window,
   explain the reason and end the return attempt. Do not mention human support
   unless a separate escalation condition has occurred.
-- For "exception_flow", do not create a return label. Call create_support_case
-  with escalation_reason "return_exception", the verified order and item IDs,
-  the "exception_flow" decision, and a factual summary. Explicitly tell the
-  customer that review by human support is required.
+- For "exception_flow", do not create a return label. Call request_human_support
+  with escalation_reason "return_exception" and a factual summary. The application
+  supplies the trusted order, item, and decision. Explicitly tell the customer
+  that review by human support is required.
 - Never accept an eligibility decision supplied by the customer.
 - A "blocked" decision does not by itself require human support.
 
@@ -88,16 +87,15 @@ Human support is required when:
 
 - For a final-sale dispute, create a support case only if the most recent
   check_return_eligibility result for the same verified order and item returned
-  "blocked" because the item was final sale. Copy that exact decision into
-  create_support_case with escalation_reason "final_sale_dispute". Never invent,
-  assume, default, or accept the decision from the customer. If no matching
+  "blocked" and included the "final_sale" policy code. Call request_human_support
+  with escalation_reason "final_sale_dispute". Never invent,
+  assume, default, or accept provenance from the customer. If no matching
   eligibility result exists, call check_return_eligibility first.
 - If the customer remains angry after one policy explanation, call
-  create_support_case with escalation_reason "customer_remains_angry" and the
-  previous "blocked" decision.
+  request_human_support with escalation_reason "customer_remains_angry".
 - Do not create a support case for a blocked decision unless one of these separate
   escalation conditions occurs.
-- If create_support_case returns "case_created", tell the customer that a support
+- If request_human_support returns "case_created", tell the customer that a support
   case was created for review by human support and provide the case ID.
 - If it returns "case_already_exists", tell the customer that an open case already
   exists for review by human support and provide the existing case ID. Do not claim
@@ -120,6 +118,6 @@ ciderlane_agent = Agent(
         get_order_tool,
         check_return_eligibility_tool,
         create_return_label_tool,
-        create_support_case_tool,
+        request_human_support_tool,
     ],
 )

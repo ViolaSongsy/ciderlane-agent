@@ -27,14 +27,15 @@ If the order has only one item, the agent can use that item. If the order has mu
 7. Call `check_return_eligibility(item_id, reason=None)` with only the selected item ID and a canonical reason (`damaged`, `wrong_item`, `other`, or null). The application reads the verified order ID from `ReturnContext`, reloads that order, and uses its stored delivery date and the item's category and final-sale status.
 8. If the decision is `standard_return`, remind the customer that the item must be unworn, unwashed, and have tags attached. Then call `create_return_label`.
 9. If the decision is `blocked`, explain the policy reason and do not create a return label.
-10. If the decision is `exception_flow`, do not create a return label. Call `create_support_case` and provide the case ID to the customer.
+10. If the decision is `exception_flow`, do not create a return label. Call `request_human_support(escalation_reason, summary)` and provide the case ID to the customer.
 
 ## Important Rules
 
 - The agent must not reveal order details before verification.
-- The application records the successfully verified order for the current conversation. A failed verification clears that state, and label creation rejects a different or unverified order.
+- The application records the successfully verified order for the current conversation. Every new verification attempt clears both the previous verification and the current trusted evaluation; label creation rejects a different or unverified order.
 - Eligibility fails closed when there is no verified order, and rejects items outside that order. An `eligibility_not_checked` response contains no policy decision: for `order_not_verified`, complete verification before retrying; for `order_or_item_not_found`, confirm the selected item from the verified order before retrying.
-- Eligibility inputs contain only `item_id` and `reason`. The model cannot supply or override the order ID, delivery date, category, final-sale status, or verification state. `ReturnContext` stores `verified_order_id` and an application-generated `conversation_id` that remains stable across turns and scopes support-case idempotency.
+- Eligibility inputs contain only `item_id` and `reason`. The model cannot supply or override the order ID, delivery date, category, final-sale status, or verification state. A successful lookup saves an immutable application-owned `current_evaluation` with the trusted order ID, item ID, decision, and canonical policy codes. A failed lookup clears it. `ReturnContext` also stores an application-generated `conversation_id` that remains stable across turns and scopes support-case idempotency.
+- `request_human_support` exposes only `escalation_reason` and `summary`. For eligibility-dependent escalation, the application reads order, item, decision, and policy codes from `current_evaluation` and verifies that the evaluation order matches the currently verified order. Verification failure does not require eligibility provenance.
 - The agent must not create a return label for blocked items.
 - The agent must not create a return label for exception flow.
 - The agent must create a support case when human review is required.
@@ -152,7 +153,7 @@ Tool result:
 `exception_flow` because damaged or wrong items can enter exception flow even if normally restricted.
 
 Tool call:
-`create_support_case(escalation_reason: "return_exception", order_id: "CL1002", item_id: "it00002", eligibility_decision: "exception_flow", summary: "The verified customer's swimsuit arrived damaged.")`
+`request_human_support(escalation_reason: "return_exception", summary: "The verified customer's swimsuit arrived damaged.")`
 
 Tool result:
 Support case created with a case ID.

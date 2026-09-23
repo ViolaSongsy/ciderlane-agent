@@ -9,7 +9,7 @@ from src.tools.return_tools import (
     check_return_eligibility,
     create_return_label,
 )
-from src.tools.support_tools import create_support_case
+from src.tools.support_tools import request_human_support
 
 @function_tool(name_override="get_order")
 def get_order_tool(
@@ -26,6 +26,7 @@ def get_order_tool(
         email: The email address associated with the order.
     """
     ctx.context.verified_order_id = None
+    ctx.context.current_evaluation = None
     result = get_order(order_id, email)
 
     if result["verified"]:
@@ -74,8 +75,8 @@ def create_return_label_tool(
     )
 
 
-@function_tool(name_override="create_support_case")
-def create_support_case_tool(
+@function_tool(name_override="request_human_support")
+def request_human_support_tool(
     ctx: RunContextWrapper[ReturnContext],
     escalation_reason: Literal[
         "return_exception",
@@ -84,24 +85,15 @@ def create_support_case_tool(
         "verification_failed",
     ],
     summary: str,
-    order_id: str | None = None,
-    item_id: str | None = None,
-    eligibility_decision: str | None = None,
 ) -> dict:
     """Create or retrieve a persistent case for required human review.
 
     Args:
         escalation_reason: The canonical reason that human review is required.
         summary: A short factual description for the human support team.
-        order_id: The verified order ID, or a user-provided ID when verification failed.
-        item_id: The selected verified item ID, when available.
-        eligibility_decision: The decision returned by check_return_eligibility.
     """
-    return create_support_case(
-        conversation_id=ctx.context.conversation_id,
+    return request_human_support(
         escalation_reason=escalation_reason,
         summary=summary,
-        order_id=order_id,
-        item_id=item_id,
-        eligibility_decision=eligibility_decision,
+        context=ctx.context,
     )

@@ -96,6 +96,7 @@ was provided. It exposes no other properties and disallows additional properties
 Output if eligibility is checked:
 - decision: "standard_return" or "exception_flow" or "blocked"
 - reasons: list of policy reasons
+- policy_codes: canonical policy findings that contributed to the decision
 
 Output if lookup is rejected:
 - status: "eligibility_not_checked"
@@ -111,6 +112,9 @@ Rules:
 - The tool reloads that order from storage and finds `item_id` only within that order. Unknown orders, unknown items, and items from another order are rejected with the same "order_or_item_not_found" error.
 - The delivery date comes from the stored order; category and final-sale status come from its stored item. These facts are not added to context.
 - The model cannot supply or override the order ID, delivery date, category, final-sale status, or verification state through this tool.
+- Before each attempt, the application clears any previous `current_evaluation`. It saves a new trusted evaluation only after the verified order and item are loaded and policy evaluation succeeds. Failed attempts leave it empty.
+- The saved evaluation is immutable. Its policy codes are a tuple; the model-visible output returns the same codes as a JSON-compatible list.
+- Policy codes are emitted directly by deterministic policy logic and are never parsed from reason strings. They record only findings that materially contribute to the decision or its provenance: `outside_return_window`, `final_sale`, `restricted_swimwear`, `damaged_item_exception`, and `wrong_item_exception`. Standard returns have no policy codes.
 - Items delivered more than 30 days ago are blocked.
 - Non-final-sale, non-swimwear items within 30 days can enter standard return.
 - Final sale items are blocked unless the reason is damaged or wrong item.
@@ -142,6 +146,7 @@ Example output: expired return window
 ```json
 {
     "decision": "blocked",
+    "policy_codes": ["outside_return_window"],
     "reasons": [
         "The item is outside the 30-day return window."
     ]
@@ -152,6 +157,7 @@ Example output: final sale item
 ```json
 {
     "decision": "blocked",
+    "policy_codes": ["final_sale"],
     "reasons": [
        "Final sale items cannot be returned unless they arrived damaged or wrong."
     ]
@@ -163,6 +169,7 @@ Example output: swimwear
 ```json
 {
     "decision": "blocked",
+    "policy_codes": ["restricted_swimwear"],
     "reasons": [
         "Swimwear cannot be returned unless it arrived damaged or wrong."
     ]
@@ -174,6 +181,7 @@ Example output: standard_return
 ```json
 {
     "decision": "standard_return",
+    "policy_codes": [],
     "reasons": [
        "The item is within the 30-day return window.",
        "The item is not final sale.",
@@ -187,6 +195,10 @@ Example output: exception_flow
 ```json
 {
     "decision": "exception_flow",
+    "policy_codes": [
+        "restricted_swimwear",
+        "damaged_item_exception"
+    ],
     "reasons": [
         "Damaged or wrong items can enter exception flow even if normally restricted."
     ]
@@ -243,17 +255,17 @@ Example output: label not created
 }
 ```
 
-## Tool: create_support_case
+## Tool: request_human_support
 
 Purpose:
 Create a persistent support case when a return conversation requires human review.
 
 Input:
 - escalation_reason: one of "return_exception", "final_sale_dispute", "customer_remains_angry", or "verification_failed"
-- order_id: optional
-- item_id: optional
-- eligibility_decision: optional
 - summary: a short description of why human review is required
+
+Interface: `request_human_support(escalation_reason, summary)`. The strict
+model-visible schema exposes only these two fields.
 
 Output if created:
 - status: "case_created"
@@ -271,13 +283,15 @@ Output if the same case is already open:
 
 Rules:
 - The agent may call this tool only when a defined escalation condition has occurred.
-- A return exception requires an eligibility decision of "exception_flow".
+- A return exception requires a current trusted evaluation with decision "exception_flow".
 - A "final_sale_dispute" case may be created only after
-  `check_return_eligibility` returns "blocked" for a final-sale item and the
-  customer disputes that decision.
-- A verification failure must not include unverified order details.
+  `check_return_eligibility` returns "blocked" with the canonical `final_sale`
+  policy code and the customer disputes that decision.
+- A "customer_remains_angry" case requires a current trusted evaluation with decision "blocked".
+- A verification failure does not require eligibility provenance and persists no order, item, or decision.
 - The tool must not create a return label.
 - The agent must not claim that a support case was created unless this tool returns "case_created".
-- The application reads `conversation_id` from `ReturnContext`; it is not a model-visible input.
+- The application reads `conversation_id` and `current_evaluation` from `ReturnContext`; neither is a model-visible input. For eligibility-dependent cases, persisted order ID, item ID, and decision come only from the trusted current evaluation.
+- Before using an evaluation for escalation, the application requires its order ID to match the order currently verified in the conversation. Missing, stale, or mismatched evaluation state is rejected.
 - If an identical open case exists in the same conversation, return its case ID instead of creating a duplicate. Identical cases in different conversations remain separate.
 - If the tool returns "case_already_exists", the agent must not claim that a new case was created.

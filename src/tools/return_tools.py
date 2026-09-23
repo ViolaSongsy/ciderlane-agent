@@ -2,7 +2,7 @@ import os
 from datetime import date, datetime
 from typing import Literal
 
-from src.context import ReturnContext
+from src.context import ReturnContext, ReturnEvaluation
 from src.tools.order_tools import load_orders
 
 
@@ -26,6 +26,9 @@ def check_return_eligibility(
     context: ReturnContext | None = None,
 ) -> dict:
     """Check an item using only the verified order's stored eligibility facts."""
+    if context is not None:
+        context.current_evaluation = None
+
     if context is None or not context.verified_order_id:
         return {
             "status": "eligibility_not_checked",
@@ -59,13 +62,20 @@ def check_return_eligibility(
             "error": "order_or_item_not_found",
         }
 
-    return evaluate_return_policy(
+    result = evaluate_return_policy(
         matched_order["delivered_date"],
         matched_item["category"],
         matched_item["final_sale"],
         reason,
         today=_current_date(),
     )
+    context.current_evaluation = ReturnEvaluation(
+        order_id=matched_order["order_id"],
+        item_id=matched_item["item_id"],
+        decision=result["decision"],
+        policy_codes=tuple(result["policy_codes"]),
+    )
+    return result
 
 
 def evaluate_return_policy(
@@ -84,13 +94,19 @@ def evaluate_return_policy(
     days_difference = difference.days
 
     response_reasons = []
+    policy_codes = []
     decision = ''
 
     if days_difference > 30:
         decision = "blocked"
         response_reasons.append("The item is outside the 30-day return window.")
+        policy_codes.append("outside_return_window")
 
-        return {"decision": decision, "reasons":response_reasons}
+        return {
+            "decision": decision,
+            "reasons": response_reasons,
+            "policy_codes": policy_codes,
+        }
 
     if (category == "swimwear" or final_sale) and reason in {
         "damaged",
@@ -98,14 +114,24 @@ def evaluate_return_policy(
     }:
         decision = 'exception_flow'
         response_reasons.append("Damaged or wrong items can enter exception flow even if normally restricted.")
+        if category == "swimwear":
+            policy_codes.append("restricted_swimwear")
+        else:
+            policy_codes.append("final_sale")
+        if reason == "damaged":
+            policy_codes.append("damaged_item_exception")
+        else:
+            policy_codes.append("wrong_item_exception")
 
     elif category == 'swimwear':
         decision = 'blocked'
         response_reasons.append("Swimwear cannot be returned unless it arrived damaged or wrong.")
+        policy_codes.append("restricted_swimwear")
 
     elif final_sale and category != "swimwear":
         decision = 'blocked'
         response_reasons.append("Final sale items cannot be returned unless they arrived damaged or wrong.")
+        policy_codes.append("final_sale")
 
     if not final_sale and category != "swimwear" and days_difference<=30:
         decision = 'standard_return'
@@ -113,7 +139,11 @@ def evaluate_return_policy(
         response_reasons.append("The item is not final sale.")
         response_reasons.append("The item is not restricted swimwear.")
 
-    return {"decision": decision, "reasons":response_reasons}
+    return {
+        "decision": decision,
+        "reasons": response_reasons,
+        "policy_codes": policy_codes,
+    }
 
 
 def create_return_label(

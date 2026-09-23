@@ -24,9 +24,8 @@ and any failed reverification clears the previous value.
 
 ### Remaining limitation
 
-The verification state exists only for the lifetime of one CLI conversation and
-is not persisted across restarts. A production design would persist a trusted
-eligibility result and pass an opaque eligibility-check ID to side-effect tools.
+The verification and trusted evaluation state exist only for the lifetime of one
+CLI conversation and are not persisted across restarts.
 
 
 ## Trusted eligibility lookup
@@ -53,3 +52,21 @@ category, and final-sale flag before evaluating policy.
 
 The model may resolve user intent into an item and return reason, but it cannot
 supply or override the authoritative facts used to determine eligibility.
+
+
+## Trusted support provenance
+
+`check_return_eligibility` clears any previous evaluation before each attempt and
+saves a new immutable application-owned evaluation only after a verified order and
+item are loaded successfully. The deterministic evaluator returns a narrow set of
+canonical policy codes directly alongside its human-readable reasons. Standard
+returns have no codes. Support authorization checks the stored decision and codes
+rather than parsing text. Codes follow policy precedence, so a final-sale swimsuit
+handled by the swimwear branch records `restricted_swimwear`, not `final_sale`.
+
+The model-visible support interface is
+`request_human_support(escalation_reason, summary)`. Eligibility-dependent cases
+derive their persisted order ID, item ID, and decision from the current evaluation.
+`final_sale_dispute` additionally requires the canonical `final_sale` policy code.
+The evaluation order must match the conversation's currently verified order.
+The internal persistence helper retains conversation-scoped open-case idempotency.

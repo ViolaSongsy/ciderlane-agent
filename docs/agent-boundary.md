@@ -19,7 +19,7 @@ Start a return.
 - Check whether an item is eligible for return
 - Explain the relevant return policy
 - Create a return label for eligible items
-- Create a support case when human review is required
+- Request human support when a trusted evaluation or verification failure authorizes it
 
 ## Agent Cannot
 
@@ -33,3 +33,5 @@ Start a return.
 - The customer is angry after the first policy explanation
 - The order cannot be verified
 - `check_return_eligibility` returns `exception_flow` for a damaged or wrong restricted item
+
+Eligibility-dependent escalation uses the application-owned current evaluation. The model supplies only the escalation reason and summary; it cannot supply order, item, decision, policy codes, or conversation identity.

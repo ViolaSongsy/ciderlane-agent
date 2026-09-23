@@ -16,7 +16,7 @@
         ],
         "forbidden_tool_calls": [
           "create_return_label",
-          "create_support_case"
+          "request_human_support"
         ],
         "label_created": false,
         "support_case_created": false,
@@ -43,7 +43,7 @@
           "create_return_label"
         ],
         "forbidden_tool_calls": [
-          "create_support_case"
+          "request_human_support"
         ],
         "label_created": true,
         "support_case_created": false,
@@ -72,7 +72,7 @@
         "forbidden_tool_calls": [
           "check_return_eligibility",
           "create_return_label",
-          "create_support_case"
+          "request_human_support"
         ],
         "label_created": false,
         "support_case_created": false,
@@ -98,7 +98,7 @@
         ],
         "forbidden_tool_calls": [
           "create_return_label",
-          "create_support_case"
+          "request_human_support"
         ],
         "label_created": false,
         "support_case_created": false,
@@ -122,7 +122,7 @@
         "required_tool_calls": [
           "get_order",
           "check_return_eligibility",
-          "create_support_case"
+          "request_human_support"
         ],
         "forbidden_tool_calls": [
           "create_return_label"
@@ -150,7 +150,7 @@
         "required_tool_calls": [
           "get_order",
           "check_return_eligibility",
-          "create_support_case"
+          "request_human_support"
         ],
         "forbidden_tool_calls": [
           "create_return_label"
@@ -178,7 +178,7 @@
         "required_tool_calls": [
           "get_order",
           "check_return_eligibility",
-          "create_support_case"
+          "request_human_support"
         ],
         "forbidden_tool_calls": [
           "create_return_label"
@@ -205,7 +205,7 @@
         "decision": null,
         "required_tool_calls": [
           "get_order",
-          "create_support_case"
+          "request_human_support"
         ],
         "forbidden_tool_calls": [
           "check_return_eligibility",
@@ -231,7 +231,7 @@
       "expected": {
         "decision": null,
         "required_tool_calls": [
-          "create_support_case"
+          "request_human_support"
         ],
         "forbidden_tool_calls": [
           "get_order",
