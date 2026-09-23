@@ -121,6 +121,15 @@ def run_case(case: dict[str, Any]) -> CaseRun:
             conversation,
             context=context,
         )
+        while result.interruptions:
+            state = result.to_state()
+            for interruption in result.interruptions:
+                if interruption.tool_name != "start_return":
+                    raise RuntimeError(f"Unexpected approval: {interruption.tool_name}")
+                # These eval cases represent a customer who approves the selected item.
+                state.approve(interruption)
+            result = Runner.run_sync(ciderlane_agent, state)
+        # A resumed result includes earlier items from the interrupted run.
         collect_run_items(
             result,
             tool_calls,
@@ -188,19 +197,20 @@ def grade_case(
     if forbidden_calls:
         failures.append(f"forbidden tool calls: {forbidden_calls}")
 
-    eligibility_output = latest_dict_output(
-        case_run,
-        "check_return_eligibility",
-    )
-    actual_decision = eligibility_output.get("decision")
+    policy_tool = next((name for name in reversed(case_run.tool_calls)
+                        if name in {"check_return_eligibility", "start_return"}), None)
+    policy_output = latest_dict_output(case_run, policy_tool) if policy_tool else {}
+    actual_decision = policy_output.get("decision")
     if actual_decision != expected["decision"]:
         failures.append(
             f"decision: expected {expected['decision']!r}, "
             f"got {actual_decision!r}"
         )
 
-    label_output = latest_dict_output(case_run, "create_return_label")
-    actual_label_created = label_output.get("status") == "label_created"
+    label_output = latest_dict_output(case_run, "start_return")
+    actual_label_created = label_output.get("status") in {
+        "return_created", "return_already_exists",
+    }
     if actual_label_created != expected["label_created"]:
         failures.append(
             f"label_created: expected {expected['label_created']!r}, "

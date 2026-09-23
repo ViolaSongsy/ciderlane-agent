@@ -11,7 +11,7 @@ from agents.tool_context import ToolContext
 
 from src.agent_tools import (
     check_return_eligibility_tool,
-    get_order_tool,
+    verify_order_tool,
     request_human_support_tool,
 )
 from src.context import ReturnContext, ReturnEvaluation
@@ -48,7 +48,7 @@ class TestSupportCaseContext(unittest.IsolatedAsyncioTestCase):
         verified = await self.invoke(
             context,
             {"order_id": "CL1002", "email": "maya@example.com"},
-            tool=get_order_tool,
+            tool=verify_order_tool,
         )
         self.assertTrue(verified["verified"])
         return await self.invoke(
@@ -100,7 +100,7 @@ class TestSupportCaseContext(unittest.IsolatedAsyncioTestCase):
         await self.invoke(
             self.context,
             {"order_id": "CL1001", "email": "maya@example.com"},
-            tool=get_order_tool,
+            tool=verify_order_tool,
         )
         result = await self.invoke(
             self.context,

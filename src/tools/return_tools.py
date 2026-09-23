@@ -1,7 +1,9 @@
 import os
+import sqlite3
 from datetime import date, datetime
 from typing import Literal
 
+from src.storage import connect_database, initialize_database
 from src.context import ReturnContext, ReturnEvaluation
 from src.tools.order_tools import load_orders
 
@@ -146,65 +148,63 @@ def evaluate_return_policy(
     }
 
 
-def create_return_label(
-    order_id,
-    item_id,
-    eligibility_decision,
+def start_return(
+    item_id: str,
+    reason: ReturnReason | None = None,
     *,
     context: ReturnContext | None = None,
-):
-    if context is None or context.verified_order_id != order_id:
-        return {
-            "status": "label_not_created",
-            "error": "order_not_verified",
-        }
+    database_path=None,
+) -> dict:
+    """Independently authorize a new return, or retrieve a persisted return."""
+    if context is not None:
+        context.current_evaluation = None
 
-    if eligibility_decision != "standard_return":
-        return {
-            "status": "label_not_created",
-            "error": "eligibility_decision_not_allowed",
-        }
+    if context is None or not context.verified_order_id:
+        return {"status": "return_not_created", "error": "order_not_verified"}
+    if reason not in (None, "damaged", "wrong_item", "other"):
+        return {"status": "return_not_created", "error": "invalid_reason"}
 
-    matched_order = next(
-        (order for order in load_orders() if order["order_id"] == order_id),
-        None,
-    )
-    if matched_order is None:
-        return {
-            "status": "label_not_created",
-            "error": "order_or_item_not_found",
-        }
+    order_id = context.verified_order_id
+    order = next((order for order in load_orders()
+                  if order["order_id"] == order_id), None)
+    item = next((item for item in order["items"]
+                 if item["item_id"] == item_id), None) if order else None
+    if item is None:
+        return {"status": "return_not_created", "error": "order_or_item_not_found"}
 
-    matched_item = next(
-        (
-            item
-            for item in matched_order["items"]
-            if item["item_id"] == item_id
-        ),
-        None,
-    )
-    if matched_item is None:
-        return {
-            "status": "label_not_created",
-            "error": "order_or_item_not_found",
-        }
+    initialize_database(database_path)
+    lookup = "SELECT * FROM returns WHERE order_id = ? AND item_id = ?"
+    with connect_database(database_path) as connection:
+        existing = connection.execute(lookup, (order_id, item_id)).fetchone()
+        if existing is not None:
+            return {"status": "return_already_exists", **dict(existing)}
 
-    trusted_eligibility = evaluate_return_policy(
-        matched_order["delivered_date"],
-        matched_item["category"],
-        matched_item["final_sale"],
-        today=_current_date(),
-    )
-    if trusted_eligibility["decision"] != "standard_return":
-        return {
-            "status": "label_not_created",
-            "error": "item_not_eligible",
-        }
+        result = evaluate_return_policy(
+            order["delivered_date"], item["category"], item["final_sale"],
+            reason, today=_current_date(),
+        )
+        context.current_evaluation = ReturnEvaluation(
+            order_id=order_id,
+            item_id=item_id,
+            decision=result["decision"],
+            policy_codes=tuple(result["policy_codes"]),
+        )
+        if result["decision"] != "standard_return":
+            return {"status": "return_not_created", **result}
 
-    return_id = f"RET-{order_id}-{item_id}".upper()
+        return_id = f"RET-{order_id}-{item_id}".upper()
+        label_url = f"https://mock.ciderlane.com/returns/{return_id}/label"
+        try:
+            connection.execute(
+                "INSERT INTO returns (return_id, order_id, item_id, label_url) "
+                "VALUES (?, ?, ?, ?)",
+                (return_id, order_id, item_id, label_url),
+            )
+        except sqlite3.IntegrityError:
+            existing = connection.execute(lookup, (order_id, item_id)).fetchone()
+            if existing is None:
+                raise
+            return {"status": "return_already_exists", **dict(existing)}
 
-    return {
-        "status": "label_created",
-        "return_id": return_id,
-        "label_url": f"https://mock.ciderlane.com/returns/{return_id}/label",
-    }
+        saved = connection.execute(lookup, (order_id, item_id)).fetchone()
+    return {"status": "return_created", **result, **dict(saved)}

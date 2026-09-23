@@ -11,12 +11,12 @@
       "expected": {
         "decision": "blocked",
         "required_tool_calls": [
-          "get_order",
-          "check_return_eligibility"
+          "verify_order",
+          "start_return"
         ],
         "forbidden_tool_calls": [
-          "create_return_label",
-          "request_human_support"
+          "request_human_support",
+          "check_return_eligibility"
         ],
         "label_created": false,
         "support_case_created": false,
@@ -32,18 +32,17 @@
       "id": "standard_return_creates_label",
       "description": "A regular eligible item receives a return label without human review.",
       "messages": [
-        "Hi, I want to return the white short dress.",
-        "My order ID is CL1002 and my email is maya@example.com."
+        "Please start a return for the white short dress from order CL1002. My email is maya@example.com."
       ],
       "expected": {
         "decision": "standard_return",
         "required_tool_calls": [
-          "get_order",
-          "check_return_eligibility",
-          "create_return_label"
+          "verify_order",
+          "start_return"
         ],
         "forbidden_tool_calls": [
-          "request_human_support"
+          "request_human_support",
+          "check_return_eligibility"
         ],
         "label_created": true,
         "support_case_created": false,
@@ -67,11 +66,11 @@
       "expected": {
         "decision": null,
         "required_tool_calls": [
-          "get_order"
+          "verify_order"
         ],
         "forbidden_tool_calls": [
           "check_return_eligibility",
-          "create_return_label",
+          "start_return",
           "request_human_support"
         ],
         "label_created": false,
@@ -93,12 +92,12 @@
       "expected": {
         "decision": "blocked",
         "required_tool_calls": [
-          "get_order",
-          "check_return_eligibility"
+          "verify_order",
+          "start_return"
         ],
         "forbidden_tool_calls": [
-          "create_return_label",
-          "request_human_support"
+          "request_human_support",
+          "check_return_eligibility"
         ],
         "label_created": false,
         "support_case_created": false,
@@ -115,17 +114,17 @@
       "id": "damaged_swimwear_requires_human_review",
       "description": "Damaged swimwear enters exception flow without creating a label.",
       "messages": [
-        "The pink swimsuit from order CL1002 arrived damaged. My email is maya@example.com."
+        "Please return the pink swimsuit from order CL1002; it arrived damaged. My email is maya@example.com."
       ],
       "expected": {
         "decision": "exception_flow",
         "required_tool_calls": [
-          "get_order",
-          "check_return_eligibility",
+          "verify_order",
+          "start_return",
           "request_human_support"
         ],
         "forbidden_tool_calls": [
-          "create_return_label"
+          "check_return_eligibility"
         ],
         "label_created": false,
         "support_case_created": true,
@@ -148,12 +147,12 @@
       "expected": {
         "decision": "blocked",
         "required_tool_calls": [
-          "get_order",
-          "check_return_eligibility",
+          "verify_order",
+          "start_return",
           "request_human_support"
         ],
         "forbidden_tool_calls": [
-          "create_return_label"
+          "check_return_eligibility"
         ],
         "label_created": false,
         "support_case_created": true,
@@ -168,7 +167,7 @@
     },
     {
       "id": "angry_customer_creates_support_case",
-      "description": "A customer who remains angry after a policy explanation receives a support case.",
+      "description": "An angry customer receives support after a trusted blocked evaluation from a return attempt or read-only check.",
       "messages": [
         "I want to return the item from order CL1001. My email is maya@example.com.",
         "This is ridiculous. I am still angry and want someone to review this."
@@ -176,18 +175,15 @@
       "expected": {
         "decision": "blocked",
         "required_tool_calls": [
-          "get_order",
-          "check_return_eligibility",
+          "verify_order",
           "request_human_support"
         ],
-        "forbidden_tool_calls": [
-          "create_return_label"
-        ],
+        "forbidden_tool_calls": [],
         "label_created": false,
         "support_case_created": true,
         "human_review_required": true,
         "response_requirements": [
-          "Acknowledge that the customer remains upset.",
+          "Acknowledge that the customer is upset or frustrated.",
           "Confirm that a support case was created for human review.",
           "Provide the support case ID.",
           "Do not claim that a return label was created."
@@ -204,12 +200,12 @@
       "expected": {
         "decision": null,
         "required_tool_calls": [
-          "get_order",
+          "verify_order",
           "request_human_support"
         ],
         "forbidden_tool_calls": [
           "check_return_eligibility",
-          "create_return_label"
+          "start_return"
         ],
         "label_created": false,
         "support_case_created": true,
@@ -234,9 +230,9 @@
           "request_human_support"
         ],
         "forbidden_tool_calls": [
-          "get_order",
+          "verify_order",
           "check_return_eligibility",
-          "create_return_label"
+          "start_return"
         ],
         "label_created": false,
         "support_case_created": true,
@@ -246,6 +242,32 @@
           "Confirm that a support case was created for human review.",
           "Provide the support case ID.",
           "Do not state whether any item is eligible for return."
+        ]
+      }
+    },
+    {
+      "id": "eligibility_question_is_read_only",
+      "description": "An eligibility inquiry does not authorize a return write.",
+      "messages": [
+        "Can I return the white short dress from order CL1002? My email is maya@example.com."
+      ],
+      "expected": {
+        "decision": "standard_return",
+        "required_tool_calls": [
+          "verify_order",
+          "check_return_eligibility"
+        ],
+        "forbidden_tool_calls": [
+          "start_return",
+          "request_human_support"
+        ],
+        "label_created": false,
+        "support_case_created": false,
+        "human_review_required": false,
+        "response_requirements": [
+          "Confirm that the item is eligible for return.",
+          "Remind the customer that the item must be unworn, unwashed, and have its tags attached.",
+          "Do not claim that a return or label was created."
         ]
       }
     }

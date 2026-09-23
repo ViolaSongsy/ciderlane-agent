@@ -1,6 +1,6 @@
 # Tools
 
-## Tool: get_order
+## Tool: verify_order
 
 Purpose:
 Verify customer information and order ID, then return the minimum order details needed for a return workflow.
@@ -205,55 +205,46 @@ Example output: exception_flow
 }
 ```
 
-## Tool: create_return_label
+## Tool: start_return
 
 Purpose:
-Create a return label for an item that has already been verified as eligible for return.
+Start a requested return with user approval and independent execution-time
+authorization, or retrieve an existing return. No previous eligibility check is required.
 
 Input:
-- order_id
 - item_id
-- eligibility_decision
+- reason: "damaged", "wrong_item", "other", or null
 
-Output if label is created:
-- status: "label_created"
-- return_id
-- label_url
-
-Output if label cannot be created:
-- status: "label_not_created"
-- error: "order_not_verified", "eligibility_decision_not_allowed",
-  "order_or_item_not_found", or "item_not_eligible"
+The strict schema exposes only these two fields. Verification state, order ID,
+decisions, context, and policy facts are application-owned.
 
 Rules:
-- The requested order must match the order verified in the current conversation.
-- Verification state is application-owned and is not an input the model can supply.
-- The agent can call this tool only when `check_return_eligibility` returns decision: "standard_return".
-- If `check_return_eligibility` returns decision: "exception_flow", the agent must not create a return label in MVP and should hand off to a human.
-- If `check_return_eligibility` returns decision: "blocked", the agent must not create a return label.
-- The eligibility_decision must come from the previous `check_return_eligibility` tool result, not from the customer.
-- The tool rejects unknown order/item pairs and does not reveal which identifier was invalid.
-- Before creating a label, the tool recalculates eligibility from the stored order data instead of trusting the decision supplied by the agent.
-- The MVP returns a deterministic mock label URL and does not call a shipping carrier API.
+- The Agents SDK pauses every start_return call. The CLI offers approval only
+  after resolving the item in the current verified order, and shows its stored
+  name, item ID, order ID, and reason. Unresolved calls are rejected without a
+  prompt. A rejection does not execute the tool or create a return or label.
+  The Runner resumes from its state.
+- After approval, clear the previous current evaluation, require a verified order, validate the
+  reason, reload that order, and validate the selected item's membership.
+- Look up an existing return by (order_id, item_id) before evaluating policy.
+  Return it even if policy has changed; this does not assert current eligibility.
+- For a new return, evaluate current stored facts and save the fresh immutable
+  evaluation. Previous eligibility results never authorize a write.
+- Only standard_return persists a return and mock label. blocked and exception_flow
+  create neither. exception_flow requires a separate request_human_support call
+  with escalation_reason "return_exception", authorized by the fresh evaluation.
+- SQLite stores return_id, order_id, item_id, label_url, and created_at. Its
+  UNIQUE(order_id, item_id) constraint guarantees global idempotency, including
+  retries from other conversations. On an insert conflict, reload the existing row.
 
-Example output: return label created
+Outputs:
+- return_created: persisted row plus decision, reasons, and policy_codes.
+- return_already_exists: the existing persisted row and label URL.
+- return_not_created: either a blocked/exception_flow policy result or an error
+  (order_not_verified, invalid_reason, or order_or_item_not_found).
 
-```json
-{
-    "status": "label_created",
-    "return_id": "RET-CL1002-IT00004",
-    "label_url": "https://mock.ciderlane.com/returns/RET-CL1002-IT00004/label"
-}
-```
-
-Example output: label not created
-
-```json
-{
-    "status": "label_not_created",
-    "error": "eligibility_decision_not_allowed"
-}
-```
+The mock label URL is https://mock.ciderlane.com/returns/RET-CL1002-IT00004/label
+for order CL1002, item it00004. No shipping carrier API is called.
 
 ## Tool: request_human_support
 
@@ -285,7 +276,7 @@ Rules:
 - The agent may call this tool only when a defined escalation condition has occurred.
 - A return exception requires a current trusted evaluation with decision "exception_flow".
 - A "final_sale_dispute" case may be created only after
-  `check_return_eligibility` returns "blocked" with the canonical `final_sale`
+  `check_return_eligibility` or `start_return` returns "blocked" with the canonical `final_sale`
   policy code and the customer disputes that decision.
 - A "customer_remains_angry" case requires a current trusted evaluation with decision "blocked".
 - A verification failure does not require eligibility provenance and persists no order, item, or decision. It is rejected if the conversation already has a verified order.

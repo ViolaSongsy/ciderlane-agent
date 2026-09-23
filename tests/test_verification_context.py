@@ -1,6 +1,8 @@
 import json
 import os
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from agents import RunContextWrapper
@@ -8,15 +10,22 @@ from agents.tool_context import ToolContext
 
 from src.agent_tools import (
     check_return_eligibility_tool,
-    create_return_label_tool,
-    get_order_tool,
+    start_return_tool,
+    verify_order_tool,
 )
 from src.context import ReturnContext
-from src.tools.return_tools import create_return_label
+from src.tools.return_tools import start_return
 
 
 class TestVerificationContext(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        db_patch = patch.dict(os.environ, {
+            "CIDERLANE_DATABASE_PATH": str(Path(directory.name) / "test.db"),
+        })
+        db_patch.start()
+        self.addCleanup(db_patch.stop)
         date_patch = patch.dict(
             os.environ,
             {"CIDERLANE_REFERENCE_DATE": "2026-08-31"},
@@ -37,24 +46,23 @@ class TestVerificationContext(unittest.IsolatedAsyncioTestCase):
 
     async def verify(self, order_id="CL1002", email="maya@example.com"):
         return await self.invoke(
-            get_order_tool,
+            verify_order_tool,
             self.ctx,
             {"order_id": order_id, "email": email},
         )
 
-    async def create_label(self, context_wrapper=None, order_id="CL1002"):
+    async def create_label(self, context_wrapper=None):
         return await self.invoke(
-            create_return_label_tool,
+            start_return_tool,
             context_wrapper or self.ctx,
             {
-                "order_id": order_id,
                 "item_id": "it00004",
-                "eligibility_decision": "standard_return",
+                "reason": None,
             },
         )
 
     def assert_not_verified(self, result):
-        self.assertEqual(result["status"], "label_not_created")
+        self.assertEqual(result["status"], "return_not_created")
         self.assertEqual(result["error"], "order_not_verified")
         self.assertNotIn("label_url", result)
 
@@ -71,12 +79,12 @@ class TestVerificationContext(unittest.IsolatedAsyncioTestCase):
         result = await self.verify()
 
         self.assertTrue(result["verified"])
-        self.assertEqual((await self.create_label())["status"], "label_created")
+        self.assertEqual((await self.create_label())["status"], "return_created")
 
     async def test_verifying_one_order_does_not_authorize_another(self):
         result = await self.verify(order_id="CL1001")
         self.assertTrue(result["verified"])
-        self.assert_not_verified(await self.create_label(order_id="CL1002"))
+        self.assertEqual((await self.create_label())["error"], "order_or_item_not_found")
 
     async def test_verification_does_not_leak_to_new_conversation(self):
         await self.verify()
@@ -118,20 +126,20 @@ class TestVerificationContext(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             (await self.create_label(next_turn))["status"],
-            "label_created",
+            "return_created",
         )
 
     def test_internal_label_function_fails_closed_without_context(self):
         self.assert_not_verified(
-            create_return_label("CL1002", "it00004", "standard_return")
+            start_return("it00004")
         )
 
     def test_model_cannot_supply_verification_state(self):
         self.assertEqual(
-            set(get_order_tool.params_json_schema["properties"]),
+            set(verify_order_tool.params_json_schema["properties"]),
             {"order_id", "email"},
         )
         self.assertEqual(
-            set(create_return_label_tool.params_json_schema["properties"]),
-            {"order_id", "item_id", "eligibility_decision"},
+            set(start_return_tool.params_json_schema["properties"]),
+            {"item_id", "reason"},
         )

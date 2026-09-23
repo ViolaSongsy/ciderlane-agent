@@ -7,7 +7,7 @@ from unittest.mock import patch
 from agents import RunContextWrapper
 from agents.tool_context import ToolContext
 
-from src.agent_tools import check_return_eligibility_tool, get_order_tool
+from src.agent_tools import check_return_eligibility_tool, verify_order_tool
 from src.context import ReturnContext, ReturnEvaluation
 from src.tools.order_tools import load_orders
 from src.tools.return_tools import check_return_eligibility
@@ -35,7 +35,7 @@ class TestTrustedEligibilityLookup(unittest.IsolatedAsyncioTestCase):
 
     async def verify(self, order_id="CL1002", email="maya@example.com"):
         return await self.invoke(
-            get_order_tool,
+            verify_order_tool,
             {"order_id": order_id, "email": email},
         )
 

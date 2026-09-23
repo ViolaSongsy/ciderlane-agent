@@ -6,6 +6,17 @@ from pathlib import Path
 DATABASE_PATH = Path(__file__).parents[1] / "data" / "ciderlane.db"
 DATABASE_PATH_ENV_VAR = "CIDERLANE_DATABASE_PATH"
 
+CREATE_RETURNS_TABLE = """
+CREATE TABLE IF NOT EXISTS returns (
+    return_id TEXT PRIMARY KEY,
+    order_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    label_url TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(order_id, item_id)
+)
+"""
+
 CREATE_SUPPORT_CASES_TABLE = """
 CREATE TABLE IF NOT EXISTS support_cases (
     case_id TEXT PRIMARY KEY,
@@ -67,6 +78,7 @@ def initialize_database(database_path=None):
     with connect_database(database_path) as connection:
         # Keep the schema check and migration atomic, including concurrent startup.
         connection.execute("BEGIN IMMEDIATE")
+        connection.execute(CREATE_RETURNS_TABLE)
         connection.execute(CREATE_SUPPORT_CASES_TABLE)
         columns = connection.execute("PRAGMA table_info(support_cases)").fetchall()
         if "conversation_id" not in {column["name"] for column in columns}:
