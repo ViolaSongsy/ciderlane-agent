@@ -40,6 +40,12 @@ def request_human_support(
         }
 
     if escalation_reason == "verification_failed":
+        if context.verified_order_id is not None:
+            return {
+                "status": "case_not_created",
+                "error": "verification_failure_not_allowed",
+            }
+
         return create_support_case(
             conversation_id=context.conversation_id,
             escalation_reason=escalation_reason,

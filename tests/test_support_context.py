@@ -222,6 +222,19 @@ class TestSupportCaseContext(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(saved_case["item_id"])
         self.assertIsNone(saved_case["eligibility_decision"])
 
+    async def test_verification_failure_is_rejected_for_verified_order(self):
+        await self.evaluate(self.context, "it00004")
+
+        result = await self.invoke(self.context, {
+            "escalation_reason": "verification_failed",
+            "summary": "The customer requested verification support.",
+        })
+
+        self.assertEqual(result, {
+            "status": "case_not_created",
+            "error": "verification_failure_not_allowed",
+        })
+
     def test_tool_schema_exposes_only_reason_and_summary(self):
         schema = request_human_support_tool.params_json_schema
 

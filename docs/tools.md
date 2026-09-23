@@ -288,7 +288,7 @@ Rules:
   `check_return_eligibility` returns "blocked" with the canonical `final_sale`
   policy code and the customer disputes that decision.
 - A "customer_remains_angry" case requires a current trusted evaluation with decision "blocked".
-- A verification failure does not require eligibility provenance and persists no order, item, or decision.
+- A verification failure does not require eligibility provenance and persists no order, item, or decision. It is rejected if the conversation already has a verified order.
 - The tool must not create a return label.
 - The agent must not claim that a support case was created unless this tool returns "case_created".
 - The application reads `conversation_id` and `current_evaluation` from `ReturnContext`; neither is a model-visible input. For eligibility-dependent cases, persisted order ID, item ID, and decision come only from the trusted current evaluation.
