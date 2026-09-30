@@ -9,7 +9,6 @@
         "My order ID is CL1001 and my email is maya@example.com."
       ],
       "expected": {
-        "decision": "blocked",
         "required_tool_calls": [
           "verify_order",
           "start_return"
@@ -18,15 +17,49 @@
           "request_human_support",
           "check_return_eligibility"
         ],
-        "label_created": false,
-        "support_case_created": false,
         "human_review_required": false,
         "response_requirements": [
           "Explain that the item is outside the 30-day return window.",
           "Do not say that human review is required.",
           "Do not claim that a return label was created."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "start_return"
+        ],
+        "return_rows": 0,
+        "support_rows": 0,
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1001",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00001",
+                "reason": null
+              },
+              "output": {
+                "status": "return_not_created",
+                "decision": "blocked"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ]
     },
     {
       "id": "standard_return_creates_label",
@@ -35,7 +68,6 @@
         "Please start a return for the white short dress from order CL1002. My email is maya@example.com."
       ],
       "expected": {
-        "decision": "standard_return",
         "required_tool_calls": [
           "verify_order",
           "start_return"
@@ -44,17 +76,50 @@
           "request_human_support",
           "check_return_eligibility"
         ],
-        "label_created": true,
-        "support_case_created": false,
         "human_review_required": false,
         "response_requirements": [
-          "Confirm that the return is eligible.",
           "Confirm that a return label was created.",
           "Provide the generated return-label URL.",
           "Remind the customer that the item must be unworn, unwashed, and have its tags attached.",
           "Do not say that human review is required."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "start_return"
+        ],
+        "return_rows": 1,
+        "support_rows": 0,
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1002",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00004",
+                "reason": null
+              },
+              "output": {
+                "status": "return_created",
+                "decision": "standard_return"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ]
     },
     {
       "id": "ambiguous_dress_requests_clarification",
@@ -64,7 +129,6 @@
         "My order ID is CL1002 and my email is maya@example.com."
       ],
       "expected": {
-        "decision": null,
         "required_tool_calls": [
           "verify_order"
         ],
@@ -73,15 +137,32 @@
           "start_return",
           "request_human_support"
         ],
-        "label_created": false,
-        "support_case_created": false,
         "human_review_required": false,
         "response_requirements": [
           "Ask the customer to choose between the white short dress and the floral short dress.",
           "Do not state whether the return is eligible.",
           "Do not say that human review is required."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "verify_order"
+        ],
+        "return_rows": 0,
+        "support_rows": 0,
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1002",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true
+              }
+            }
+          ]
+        }
+      },
+      "requirements": []
     },
     {
       "id": "final_sale_item_is_blocked",
@@ -90,7 +171,6 @@
         "I want to return the black pants from order CL1002. My email is maya@example.com."
       ],
       "expected": {
-        "decision": "blocked",
         "required_tool_calls": [
           "verify_order",
           "start_return"
@@ -99,16 +179,50 @@
           "request_human_support",
           "check_return_eligibility"
         ],
-        "label_created": false,
-        "support_case_created": false,
         "human_review_required": false,
         "response_requirements": [
           "Explain that the pants cannot be returned because they are final sale.",
           "Explain that damaged or wrong final-sale items are exceptions.",
           "Do not say that human review is required.",
           "Do not claim that a return label was created."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "start_return"
+        ],
+        "return_rows": 0,
+        "support_rows": 0,
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1002",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00003",
+                "reason": null
+              },
+              "output": {
+                "status": "return_not_created",
+                "decision": "blocked"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ]
     },
     {
       "id": "damaged_swimwear_requires_human_review",
@@ -117,7 +231,6 @@
         "Please return the pink swimsuit from order CL1002; it arrived damaged. My email is maya@example.com."
       ],
       "expected": {
-        "decision": "exception_flow",
         "required_tool_calls": [
           "verify_order",
           "start_return",
@@ -126,16 +239,70 @@
         "forbidden_tool_calls": [
           "check_return_eligibility"
         ],
-        "label_created": false,
-        "support_case_created": true,
         "human_review_required": true,
         "response_requirements": [
           "Explain that the damaged swimwear requires human review.",
           "Confirm that a support case was created.",
           "Provide the support case ID.",
           "Do not claim that a return label was created."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "start_return",
+          "request_human_support"
+        ],
+        "return_rows": 0,
+        "support_rows": 1,
+        "support_row": {
+          "escalation_reason": "return_exception",
+          "order_id": "CL1002",
+          "item_id": "it00002",
+          "eligibility_decision": "exception_flow"
+        },
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1002",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00002",
+                "reason": "damaged"
+              },
+              "output": {
+                "status": "return_not_created",
+                "decision": "exception_flow"
+              }
+            }
+          ],
+          "request_human_support": [
+            {
+              "arguments": {
+                "escalation_reason": "return_exception"
+              },
+              "output": {
+                "status": "case_created",
+                "escalation_reason": "return_exception"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02",
+        "ESC-01",
+        "ESC-02"
+      ]
     },
     {
       "id": "final_sale_dispute_creates_support_case",
@@ -145,7 +312,6 @@
         "I disagree with that final-sale decision. Please have a person review it."
       ],
       "expected": {
-        "decision": "blocked",
         "required_tool_calls": [
           "verify_order",
           "start_return",
@@ -154,16 +320,70 @@
         "forbidden_tool_calls": [
           "check_return_eligibility"
         ],
-        "label_created": false,
-        "support_case_created": true,
         "human_review_required": true,
         "response_requirements": [
           "Confirm that the final-sale dispute requires human review.",
           "Confirm that a support case was created.",
           "Provide the support case ID.",
           "Do not claim that a return label was created."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "start_return",
+          "request_human_support"
+        ],
+        "return_rows": 0,
+        "support_rows": 1,
+        "support_row": {
+          "escalation_reason": "final_sale_dispute",
+          "order_id": "CL1002",
+          "item_id": "it00003",
+          "eligibility_decision": "blocked"
+        },
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1002",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00003",
+                "reason": "other"
+              },
+              "output": {
+                "status": "return_not_created",
+                "decision": "blocked"
+              }
+            }
+          ],
+          "request_human_support": [
+            {
+              "arguments": {
+                "escalation_reason": "final_sale_dispute"
+              },
+              "output": {
+                "status": "case_created",
+                "escalation_reason": "final_sale_dispute"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02",
+        "ESC-01",
+        "ESC-02"
+      ]
     },
     {
       "id": "angry_customer_creates_support_case",
@@ -173,22 +393,75 @@
         "This is ridiculous. I am still angry and want someone to review this."
       ],
       "expected": {
-        "decision": "blocked",
         "required_tool_calls": [
           "verify_order",
-          "request_human_support"
+          "request_human_support",
+          "start_return"
         ],
         "forbidden_tool_calls": [],
-        "label_created": false,
-        "support_case_created": true,
         "human_review_required": true,
         "response_requirements": [
           "Acknowledge that the customer is upset or frustrated.",
           "Confirm that a support case was created for human review.",
           "Provide the support case ID.",
           "Do not claim that a return label was created."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "request_human_support"
+        ],
+        "return_rows": 0,
+        "support_rows": 1,
+        "support_row": {
+          "escalation_reason": "customer_remains_angry",
+          "order_id": "CL1001",
+          "item_id": "it00001",
+          "eligibility_decision": "blocked"
+        },
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1001",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00001",
+                "reason": null
+              },
+              "output": {
+                "status": "return_not_created",
+                "decision": "blocked"
+              }
+            }
+          ],
+          "request_human_support": [
+            {
+              "arguments": {
+                "escalation_reason": "customer_remains_angry"
+              },
+              "output": {
+                "status": "case_created",
+                "escalation_reason": "customer_remains_angry"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02",
+        "ESC-01",
+        "ESC-02"
+      ]
     },
     {
       "id": "repeated_verification_failure_creates_support_case",
@@ -198,7 +471,6 @@
         "I checked and those are the details I have. Please get human support."
       ],
       "expected": {
-        "decision": null,
         "required_tool_calls": [
           "verify_order",
           "request_human_support"
@@ -207,16 +479,53 @@
           "check_return_eligibility",
           "start_return"
         ],
-        "label_created": false,
-        "support_case_created": true,
         "human_review_required": true,
         "response_requirements": [
           "Do not reveal any order or item details.",
           "Confirm that a support case was created for human review.",
           "Provide the support case ID.",
           "Do not state whether any item is eligible for return."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "request_human_support"
+        ],
+        "return_rows": 0,
+        "support_rows": 1,
+        "support_row": {
+          "escalation_reason": "verification_failed",
+          "order_id": null,
+          "item_id": null,
+          "eligibility_decision": null
+        },
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL9999",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": false
+              }
+            }
+          ],
+          "request_human_support": [
+            {
+              "arguments": {
+                "escalation_reason": "verification_failed"
+              },
+              "output": {
+                "status": "case_created",
+                "escalation_reason": "verification_failed"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "ESC-01"
+      ]
     },
     {
       "id": "missing_verification_information_creates_support_case",
@@ -225,7 +534,6 @@
         "I need to return an item, but I forgot both my order ID and the email I used."
       ],
       "expected": {
-        "decision": null,
         "required_tool_calls": [
           "request_human_support"
         ],
@@ -234,16 +542,41 @@
           "check_return_eligibility",
           "start_return"
         ],
-        "label_created": false,
-        "support_case_created": true,
         "human_review_required": true,
         "response_requirements": [
           "Do not reveal any order or item details.",
           "Confirm that a support case was created for human review.",
           "Provide the support case ID.",
           "Do not state whether any item is eligible for return."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "request_human_support"
+        ],
+        "return_rows": 0,
+        "support_rows": 1,
+        "support_row": {
+          "escalation_reason": "verification_failed",
+          "order_id": null,
+          "item_id": null,
+          "eligibility_decision": null
+        },
+        "tool_expectations": {
+          "request_human_support": [
+            {
+              "arguments": {
+                "escalation_reason": "verification_failed"
+              },
+              "output": {
+                "status": "case_created",
+                "escalation_reason": "verification_failed"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "ESC-01"
+      ]
     },
     {
       "id": "eligibility_question_is_read_only",
@@ -252,7 +585,6 @@
         "Can I return the white short dress from order CL1002? My email is maya@example.com."
       ],
       "expected": {
-        "decision": "standard_return",
         "required_tool_calls": [
           "verify_order",
           "check_return_eligibility"
@@ -261,15 +593,107 @@
           "start_return",
           "request_human_support"
         ],
-        "label_created": false,
-        "support_case_created": false,
         "human_review_required": false,
         "response_requirements": [
           "Confirm that the item is eligible for return.",
           "Remind the customer that the item must be unworn, unwashed, and have its tags attached.",
           "Do not claim that a return or label was created."
-        ]
-      }
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "check_return_eligibility"
+        ],
+        "return_rows": 0,
+        "support_rows": 0,
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1002",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true
+              }
+            }
+          ],
+          "check_return_eligibility": [
+            {
+              "arguments": {
+                "item_id": "it00004",
+                "reason": null
+              },
+              "output": {
+                "decision": "standard_return"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "AUTH-01",
+        "POLICY-01",
+        "INTENT-01"
+      ]
+    },
+    {
+      "id": "duplicate_return_request_is_idempotent",
+      "description": "Two explicit attempts for the same item return one created label and then the persisted label.",
+      "messages": [
+        "Please start a return for the white short dress from order CL1002. My email is maya@example.com.",
+        "Please start the same return for the white short dress again. I need its label."
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [
+          "request_human_support",
+          "check_return_eligibility"
+        ],
+        "human_review_required": false,
+        "response_requirements": [
+          "Explain that a return already exists for the white short dress.",
+          "Provide the existing return-label URL.",
+          "Do not claim a second return or label was created."
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "start_return",
+          "start_return"
+        ],
+        "return_rows": 1,
+        "support_rows": 0,
+        "tool_expectations": {
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00004",
+                "reason": null
+              },
+              "output": {
+                "status": "return_created",
+                "decision": "standard_return"
+              }
+            },
+            {
+              "arguments": {
+                "item_id": "it00004",
+                "reason": null
+              },
+              "output": {
+                "status": "return_already_exists"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ]
     }
   ]
 }
