@@ -75,6 +75,51 @@ class TestInitializeDatabase(unittest.TestCase):
 
         self.assertTrue(self.database_path.exists())
 
+    def test_pending_label_requests_enforce_pair_and_key_uniqueness(self):
+        initialize_database(self.database_path)
+        insert = ('INSERT INTO return_label_requests (order_id, item_id, idempotency_key) '
+                  'VALUES (?, ?, ?)')
+        with connect_database(self.database_path) as connection:
+            connection.execute(insert, ('CL1002', 'it00004', 'key-1'))
+            for values in (
+                ('CL1002', 'it00004', 'key-2'),  # Same item, different key.
+                ('CL1002', 'it00005', 'key-1'),  # Different item, reused key.
+                ('CL1002', 'it00005', None),
+                (None, 'it00005', 'key-2'),
+                ('CL1002', None, 'key-2'),
+            ):
+                with self.subTest(values=values), self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(insert, values)
+            connection.execute(insert, ('CL1002', 'it00005', 'key-2'))
+            before = [dict(row) for row in connection.execute(
+                'SELECT * FROM return_label_requests ORDER BY item_id')]
+        initialize_database(self.database_path)
+        with connect_database(self.database_path) as connection:
+            after = [dict(row) for row in connection.execute(
+                'SELECT * FROM return_label_requests ORDER BY item_id')]
+        self.assertEqual(after, before)
+        self.assertEqual(len(after), 2)
+
+    def test_label_request_schema_upgrade_preserves_completed_returns(self):
+        with connect_database(self.database_path) as connection:
+            connection.execute('CREATE TABLE returns ('
+                               'return_id TEXT PRIMARY KEY, order_id TEXT NOT NULL, '
+                               'item_id TEXT NOT NULL, label_url TEXT NOT NULL, '
+                               'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, '
+                               'UNIQUE(order_id, item_id))')
+            connection.execute('INSERT INTO returns (return_id, order_id, item_id, label_url) '
+                               "VALUES ('RET-OLD', 'CL1002', 'it00004', 'https://example.test/label')")
+            before = dict(connection.execute('SELECT * FROM returns').fetchone())
+            schema_before = connection.execute("SELECT sql FROM sqlite_master WHERE name = 'returns'").fetchone()[0]
+        initialize_database(self.database_path)
+        with connect_database(self.database_path) as connection:
+            after = dict(connection.execute('SELECT * FROM returns').fetchone())
+            schema_after = connection.execute("SELECT sql FROM sqlite_master WHERE name = 'returns'").fetchone()[0]
+            pending = connection.execute('SELECT * FROM return_label_requests').fetchall()
+        self.assertEqual(after, before)
+        self.assertEqual(schema_after, schema_before)
+        self.assertEqual(pending, [])
+
     def test_migration_preserves_cases_and_assigns_stable_legacy_identity(self):
         with connect_database(self.database_path) as connection:
             connection.executescript(LEGACY_SCHEMA)

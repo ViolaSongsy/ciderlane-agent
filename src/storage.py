@@ -17,6 +17,16 @@ CREATE TABLE IF NOT EXISTS returns (
 )
 """
 
+CREATE_RETURN_LABEL_REQUESTS_TABLE = """
+CREATE TABLE IF NOT EXISTS return_label_requests (
+    order_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(order_id, item_id)
+)
+"""
+
 CREATE_SUPPORT_CASES_TABLE = """
 CREATE TABLE IF NOT EXISTS support_cases (
     case_id TEXT PRIMARY KEY,
@@ -79,6 +89,7 @@ def initialize_database(database_path=None):
         # Keep the schema check and migration atomic, including concurrent startup.
         connection.execute("BEGIN IMMEDIATE")
         connection.execute(CREATE_RETURNS_TABLE)
+        connection.execute(CREATE_RETURN_LABEL_REQUESTS_TABLE)
         connection.execute(CREATE_SUPPORT_CASES_TABLE)
         columns = connection.execute("PRAGMA table_info(support_cases)").fetchall()
         if "conversation_id" not in {column["name"] for column in columns}:
