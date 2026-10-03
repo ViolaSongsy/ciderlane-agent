@@ -78,6 +78,69 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(self.rows(), [])
                 self.assertEqual(len(self.rows('return_label_requests')), 1)
 
+    def test_later_invocation_reuses_pending_key_and_completes(self):
+        self.provider.create_label.side_effect = ReturnLabelProviderError('label_provider_timeout')
+        failed = start_return('it00004', context=self.context)
+        self.assertEqual(failed['status'], 'return_not_created')
+        key = self.rows('return_label_requests')[0]['idempotency_key']
+
+        # A new conversation recovers the operation from SQLite, not old context.
+        self.provider.create_label.side_effect = None
+        result = start_return('it00004', context=ReturnContext(verified_order_id='CL1002'))
+        self.assertEqual(result['status'], 'return_created')
+        self.assertEqual(len(self.rows()), 1)
+        self.assertEqual(self.rows('return_label_requests'), [])
+        self.assertEqual(self.provider.create_label.call_count, 2)
+        for request in self.provider.create_label.call_args_list:
+            self.assertEqual(request.kwargs['idempotency_key'], key)
+            self.assertEqual(request.kwargs['order_id'], 'CL1002')
+            self.assertEqual(request.kwargs['item_id'], 'it00004')
+
+    def test_provider_success_local_write_failure_then_recovery(self):
+        with closing(connect_database()) as connection, connection:
+            # Fail after INSERT to prove completion and pending cleanup roll back together.
+            connection.execute('CREATE TRIGGER fail_completion BEFORE DELETE ON return_label_requests '
+                               "BEGIN SELECT RAISE(ABORT, 'injected write failure'); END")
+        failed = start_return('it00004', context=self.context)
+        self.assertEqual(failed, {'status': 'return_not_created', 'error': 'return_storage_unavailable'})
+        self.assertEqual(self.rows(), [])
+        key = self.rows('return_label_requests')[0]['idempotency_key']
+        self.assertEqual(self.provider.create_label.call_args.kwargs['idempotency_key'], key)
+
+        with closing(connect_database()) as connection, connection:
+            connection.execute('DROP TRIGGER fail_completion')
+        recovered = start_return('it00004', context=ReturnContext(verified_order_id='CL1002'))
+        self.assertEqual(recovered['status'], 'return_created')
+        self.assertEqual(recovered['label_url'], 'https://carrier.example.test/label.pdf')
+        self.assertEqual(len(self.rows()), 1)
+        self.assertEqual(self.rows('return_label_requests'), [])
+        self.assertEqual(self.provider.create_label.call_count, 2)
+        self.assertEqual(self.provider.create_label.call_args.kwargs['idempotency_key'], key)
+
+    def test_failed_key_reservation_never_calls_provider(self):
+        with closing(connect_database()) as connection, connection:
+            connection.execute('CREATE TRIGGER fail_reservation BEFORE INSERT ON return_label_requests '
+                               "BEGIN SELECT RAISE(ABORT, 'injected write failure'); END")
+        result = start_return('it00004', context=self.context)
+        self.assertEqual(result, {'status': 'return_not_created', 'error': 'return_storage_unavailable'})
+        self.provider_factory.assert_not_called()
+        self.assertEqual(self.rows(), [])
+        self.assertEqual(self.rows('return_label_requests'), [])
+
+    def test_pending_request_does_not_bypass_changed_policy(self):
+        self.provider.create_label.side_effect = ReturnLabelProviderError('label_provider_timeout')
+        start_return('it00004', context=self.context)
+        pending = self.rows('return_label_requests')
+        self.assertEqual(len(pending), 1)
+        self.provider_factory.reset_mock()
+        with patch.dict(os.environ, {'CIDERLANE_REFERENCE_DATE': '2027-01-01'}):
+            result = start_return('it00004', context=self.context)
+        self.assertEqual(result['status'], 'return_not_created')
+        self.assertEqual(result['decision'], 'blocked')
+        self.provider_factory.assert_not_called()
+        self.assertEqual(self.rows(), [])
+        self.assertEqual(self.rows('return_label_requests'), pending)
+
     def test_failed_attempts_clear_stale_evaluation_without_writes(self):
         for order, item, reason, error in (
             (None, 'it00004', None, 'order_not_verified'),

@@ -1,9 +1,10 @@
+import os
 import unittest
 from unittest.mock import call, patch
 
 import requests
 
-from src.return_label_provider import ReturnLabelProvider, ReturnLabelProviderError
+from src.return_label_provider import ReturnLabelProvider, ReturnLabelProviderError, get_return_label_provider
 
 
 class TestReturnLabelProvider(unittest.TestCase):
@@ -138,4 +139,29 @@ class TestReturnLabelProvider(unittest.TestCase):
             with self.subTest(url=url, timeout=timeout):
                 with self.assertRaisesRegex(ReturnLabelProviderError, '^label_provider_not_configured$'):
                     ReturnLabelProvider(url, token, timeout)
+        self.post.assert_not_called()
+
+    def test_provider_reads_application_environment(self):
+        settings = {'CIDERLANE_LABEL_PROVIDER_URL': 'https://configured.example.test/labels',
+                    'CIDERLANE_LABEL_PROVIDER_TOKEN': 'configured-token',
+                    'CIDERLANE_LABEL_TIMEOUT_SECONDS': '2.5', 'CIDERLANE_LABEL_MAX_ATTEMPTS': '2'}
+        with patch.dict(os.environ, settings, clear=True):
+            provider = get_return_label_provider()
+            self.assertEqual(provider.max_attempts, 2)
+            provider.create_label(
+                order_id='CL2007', item_id='it00888', idempotency_key='persisted-key',
+            )
+        request = self.post.call_args
+        self.assertEqual(request.args[0], settings['CIDERLANE_LABEL_PROVIDER_URL'])
+        self.assertEqual(request.kwargs['headers']['Authorization'], 'Bearer configured-token')
+        self.assertEqual(request.kwargs['timeout'], 2.5)
+
+    def test_missing_or_malformed_environment_fails_before_http(self):
+        valid = {'CIDERLANE_LABEL_PROVIDER_URL': self.provider.url,
+                 'CIDERLANE_LABEL_PROVIDER_TOKEN': 'configured-token'}
+        for settings in ({}, {**valid, 'CIDERLANE_LABEL_TIMEOUT_SECONDS': 'invalid'},
+                         {**valid, 'CIDERLANE_LABEL_MAX_ATTEMPTS': 'invalid'}):
+            with self.subTest(settings=settings), patch.dict(os.environ, settings, clear=True):
+                with self.assertRaisesRegex(ReturnLabelProviderError, '^label_provider_not_configured$'):
+                    get_return_label_provider()
         self.post.assert_not_called()

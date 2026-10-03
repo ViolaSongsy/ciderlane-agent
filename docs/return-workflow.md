@@ -44,6 +44,7 @@ If the order has only one item, the agent can use that item. If the order has mu
 - The agent should ask clarifying questions when the item is ambiguous.
 - Return writes independently authorize using fresh stored facts; a prior eligibility result is not authorization.
 - Return idempotency is global through SQLite UNIQUE(order_id, item_id). Existing returns are retrieved before policy evaluation, even when policy has changed.
+- If `start_return` returns an error, do not claim that a return or label was created.
 
 ## Example: Expired Single-Item Order
 
@@ -105,7 +106,7 @@ Tool call:
 
 Tool result:
 `return_created` with decision `standard_return`, return ID RET-CL1002-IT00004,
-and label URL https://mock.ciderlane.com/returns/RET-CL1002-IT00004/label.
+and the provider's label URL, for example https://carrier.example.test/label.pdf.
 
 Agent:
 The white short dress is eligible and your return is created. It must be unworn,

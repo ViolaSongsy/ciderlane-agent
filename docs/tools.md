@@ -230,21 +230,32 @@ Rules:
   Return it even if policy has changed; this does not assert current eligibility.
 - For a new return, evaluate current stored facts and save the fresh immutable
   evaluation. Previous eligibility results never authorize a write.
-- Only standard_return persists a return and mock label. blocked and exception_flow
-  create neither. exception_flow requires a separate request_human_support call
+- Only standard_return can request a label from the configured HTTP provider.
+  blocked and exception_flow never call it. exception_flow requires a separate request_human_support call
   with escalation_reason "return_exception", authorized by the fresh evaluation.
+- Before HTTP, reserve and commit one application-generated idempotency key for
+  (order_id, item_id) in return_label_requests. Reuse it for every retry and later
+  invocation. Provider settings and keys are application-owned; HTTP runs outside
+  SQLite transactions.
+- After a valid provider success, insert the completed return and delete its
+  pending request in one transaction. Failure rolls back both changes and keeps
+  the key for recovery, including when the provider succeeded but the local write failed.
 - SQLite stores return_id, order_id, item_id, label_url, and created_at. Its
   UNIQUE(order_id, item_id) constraint guarantees global idempotency, including
-  retries from other conversations. On an insert conflict, reload the existing row.
+  retries from other conversations. Recheck for an existing return under a write
+  lock after HTTP, in case another invocation completed it while the request ran.
 
 Outputs:
 - return_created: persisted row plus decision, reasons, and policy_codes.
 - return_already_exists: the existing persisted row and label URL.
 - return_not_created: either a blocked/exception_flow policy result or an error
-  (order_not_verified, invalid_reason, or order_or_item_not_found).
+  (order_not_verified, invalid_reason, order_or_item_not_found,
+  label_provider_not_configured, label_provider_timeout, label_provider_unavailable,
+  label_provider_http_error, label_provider_invalid_response, or return_storage_unavailable).
 
-The mock label URL is https://mock.ciderlane.com/returns/RET-CL1002-IT00004/label
-for order CL1002, item it00004. No shipping carrier API is called.
+Provider errors contain a safe code, without credentials or response bodies.
+They never include a success decision or label URL. An existing completed return
+returns return_already_exists without calling the provider.
 
 ## Tool: request_human_support
 
