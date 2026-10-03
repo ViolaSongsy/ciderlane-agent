@@ -91,7 +91,7 @@ class TestCreateSupportCase(unittest.TestCase):
             missing_case = Mock()
             missing_case.fetchone.return_value = None
             with patch("src.tools.support_tools.connect_database") as database:
-                proxy = database.return_value.__enter__.return_value
+                proxy = database.return_value
 
                 def execute(sql, parameters):
                     if proxy.execute.call_count == 1:

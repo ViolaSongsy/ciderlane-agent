@@ -87,7 +87,7 @@ def connect_database(database_path=None):
 
 
 def initialize_database(database_path=None):
-    with connect_database(database_path) as connection:
+    with closing(connect_database(database_path)) as connection, connection:
         # Keep the schema check and migration atomic, including concurrent startup.
         connection.execute("BEGIN IMMEDIATE")
         connection.execute(CREATE_RETURNS_TABLE)
@@ -106,19 +106,20 @@ def initialize_database(database_path=None):
 
 def reserve_return_label_request(
     order_id: str, item_id: str, *, database_path=None,
-) -> str | None:
-    """Return a committed key, or None when the return is already completed."""
+) -> tuple[str | None, sqlite3.Row | None]:
+    """Return (committed key, None), or (None, completed return)."""
     pair = (order_id, item_id)
     with closing(connect_database(database_path)) as connection:
         with connection:
             # Lock before reading so concurrent callers cannot reserve different keys.
             connection.execute("BEGIN IMMEDIATE")
             completed = connection.execute(
-                "SELECT 1 FROM returns WHERE order_id = ? AND item_id = ?", pair,
+                "SELECT * FROM returns WHERE order_id = ? AND item_id = ?", pair,
             ).fetchone()
             if completed is not None:
-                return None
+                return None, completed
 
+            # This row represents pending state; completion deletes it.
             pending = connection.execute(
                 "SELECT idempotency_key FROM return_label_requests "
                 "WHERE order_id = ? AND item_id = ?", pair,
@@ -133,4 +134,4 @@ def reserve_return_label_request(
                     "VALUES (?, ?, ?)", (*pair, idempotency_key),
                 )
         # The transaction has committed; closing releases the connection next.
-    return idempotency_key
+    return idempotency_key, None

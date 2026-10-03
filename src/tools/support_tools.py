@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from uuid import uuid4
 
 from src.context import ReturnContext
@@ -140,27 +141,20 @@ def create_support_case(
             }
 
     initialize_database(database_path)
+    lookup = """
+        SELECT case_id, escalation_reason
+        FROM support_cases
+        WHERE conversation_id = ?
+          AND escalation_reason = ?
+          AND order_id IS ?
+          AND item_id IS ?
+          AND eligibility_decision IS ?
+          AND status = 'open'
+    """
+    scope = (conversation_id, escalation_reason, order_id, item_id, eligibility_decision)
 
-    with connect_database(database_path) as connection:
-        existing_case = connection.execute(
-            """
-            SELECT case_id, escalation_reason
-            FROM support_cases
-            WHERE conversation_id = ?
-              AND escalation_reason = ?
-              AND order_id IS ?
-              AND item_id IS ?
-              AND eligibility_decision IS ?
-              AND status = 'open'
-            """,
-            (
-                conversation_id,
-                escalation_reason,
-                order_id,
-                item_id,
-                eligibility_decision,
-            ),
-        ).fetchone()
+    with closing(connect_database(database_path)) as connection, connection:
+        existing_case = connection.execute(lookup, scope).fetchone()
 
         if existing_case is not None:
             return {
@@ -196,25 +190,8 @@ def create_support_case(
                 ),
             )
         except sqlite3.IntegrityError:
-            existing_case = connection.execute(
-                """
-                SELECT case_id, escalation_reason
-                FROM support_cases
-                WHERE conversation_id = ?
-                  AND escalation_reason = ?
-                  AND order_id IS ?
-                  AND item_id IS ?
-                  AND eligibility_decision IS ?
-                  AND status = 'open'
-                """,
-                (
-                    conversation_id,
-                    escalation_reason,
-                    order_id,
-                    item_id,
-                    eligibility_decision,
-                ),
-            ).fetchone()
+            # Another caller may have inserted the same open case after our lookup.
+            existing_case = connection.execute(lookup, scope).fetchone()
 
             if existing_case is None:
                 raise

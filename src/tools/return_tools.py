@@ -200,10 +200,8 @@ def start_return(
 
     try:
         # Reservation commits and closes its connection before any HTTP call.
-        key = reserve_return_label_request(order_id, item_id, database_path=database_path)
+        key, existing = reserve_return_label_request(order_id, item_id, database_path=database_path)
         if key is None:
-            with closing(connect_database(database_path)) as connection:
-                existing = connection.execute(lookup, pair).fetchone()
             context.current_evaluation = None
             return {"status": "return_already_exists", **dict(existing)}
 
@@ -212,21 +210,25 @@ def start_return(
         )
         with closing(connect_database(database_path)) as connection:
             with connection:
+                # Commit on success; roll back INSERT and DELETE if an error escapes.
+                # The pending key was already committed in a separate transaction.
                 # Another caller may have completed the return during HTTP.
                 connection.execute("BEGIN IMMEDIATE")
                 existing = connection.execute(lookup, pair).fetchone()
+                saved = existing
                 if existing is None:
                     return_id = f"RET-{order_id}-{item_id}".upper()
-                    connection.execute(
+                    # RETURNING includes created_at without a second SELECT.
+                    saved = connection.execute(
                         "INSERT INTO returns (return_id, order_id, item_id, label_url) "
-                        "VALUES (?, ?, ?, ?)", (return_id, order_id, item_id, label_url),
-                    )
+                        "VALUES (?, ?, ?, ?) RETURNING *", (return_id, order_id, item_id, label_url),
+                    ).fetchone()
                 # Commit both changes together; rollback preserves the pending key.
                 connection.execute(
                     "DELETE FROM return_label_requests WHERE order_id = ? AND item_id = ?", pair,
                 )
-                saved = connection.execute(lookup, pair).fetchone()
     except ReturnLabelProviderError as error:
+        # Leave the committed pending row unchanged so a later call can reuse its key.
         return {"status": "return_not_created", "error": error.code}
     except sqlite3.Error:
         return {"status": "return_not_created", "error": "return_storage_unavailable"}

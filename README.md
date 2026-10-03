@@ -17,6 +17,8 @@ This project explores how to separate an LLM's conversational reasoning from det
 
 ## Label Provider Configuration
 
+SQLite 3.35 or newer is required for `INSERT ... RETURNING`.
+
 Set these application settings in the environment or `.env` for the CLI:
 
 | Variable | Value |
@@ -39,3 +41,26 @@ From the project root:
 ```bash
 .venv/bin/python -m unittest discover -s tests
 ```
+
+To run agent evals with the local mock HTTP API:
+
+```bash
+.venv/bin/python -m evals.run_evals
+```
+
+The command starts a localhost mock API on an available port, temporarily configures
+the application to use it, and closes it after the run. It needs no separate server
+or provider settings. The LLM runs live using `OPENAI_API_KEY` from the environment
+or `.env`. Label requests use real HTTP against the mock, which returns fake label
+URLs. Each case uses a temporary database, and the harness approves `start_return`
+calls automatically.
+
+To evaluate an existing provider using the configuration above:
+
+```bash
+.venv/bin/python -m evals.run_evals --use-configured-provider
+```
+
+For CLI demos, the mock can also run separately with
+`.venv/bin/python -m evals.mock_label_provider`. Its endpoint is
+`http://127.0.0.1:8765/labels` and its token is `mock-token`.

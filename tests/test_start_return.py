@@ -14,7 +14,7 @@ from src.agent import ciderlane_agent
 from src.agent_tools import start_return_tool
 from src.context import ReturnContext, ReturnEvaluation
 from src.return_label_provider import ReturnLabelProviderError
-from src.storage import connect_database, initialize_database
+from src.storage import connect_database, initialize_database, reserve_return_label_request
 from src.tools.order_tools import load_orders
 from src.tools.return_tools import check_return_eligibility, start_return
 from src.tools.support_tools import request_human_support
@@ -229,6 +229,23 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute('INSERT INTO returns (return_id, order_id, item_id, label_url) '
                                    'VALUES (?, ?, ?, ?)', ('different-id', 'CL1002', 'it00004', 'label'))
+
+    def test_completion_during_reservation_returns_existing_without_provider(self):
+        def reserve_after_another_caller(order_id, item_id, *, database_path):
+            # Complete after the first lookup, before the reservation acquires its lock.
+            with closing(connect_database(database_path)) as connection, connection:
+                connection.execute('INSERT INTO returns (return_id, order_id, item_id, label_url) '
+                                   'VALUES (?, ?, ?, ?)',
+                                   ('other-return', order_id, item_id, 'https://carrier.example.test/other'))
+            return reserve_return_label_request(order_id, item_id, database_path=database_path)
+
+        with patch('src.tools.return_tools.reserve_return_label_request',
+                   side_effect=reserve_after_another_caller):
+            result = start_return('it00004', context=self.context)
+        self.assertEqual(result, {'status': 'return_already_exists', **self.rows()[0]})
+        self.assertIsNone(self.context.current_evaluation)
+        self.provider_factory.assert_not_called()
+        self.assertEqual(self.rows('return_label_requests'), [])
 
     async def test_schema_and_forged_state_cannot_authorize_write(self):
         self.assertEqual({tool.name for tool in ciderlane_agent.tools}, {

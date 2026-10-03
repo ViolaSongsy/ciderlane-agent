@@ -77,6 +77,14 @@ class TestInitializeDatabase(unittest.TestCase):
 
         self.assertTrue(self.database_path.exists())
 
+    def test_initialization_closes_its_connection(self):
+        connection = connect_database(self.database_path)
+        self.addCleanup(connection.close)
+        with patch('src.storage.connect_database', return_value=connection):
+            initialize_database(self.database_path)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            connection.execute('SELECT 1')
+
     def test_pending_label_requests_enforce_pair_and_key_uniqueness(self):
         initialize_database(self.database_path)
         insert = ('INSERT INTO return_label_requests (order_id, item_id, idempotency_key) '
@@ -208,7 +216,8 @@ class TestReturnLabelRequestReservation(unittest.TestCase):
         connection = connect_database(self.database_path)
         self.addCleanup(connection.close)
         with patch('src.storage.connect_database', return_value=connection):
-            first = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+            first, completed = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+        self.assertIsNone(completed)
         self.assertEqual(str(UUID(first)), first)
         with self.assertRaises(sqlite3.ProgrammingError):
             connection.execute('SELECT 1')  # The helper must have closed this connection.
@@ -218,20 +227,23 @@ class TestReturnLabelRequestReservation(unittest.TestCase):
             reader.execute('BEGIN IMMEDIATE')
             row = reader.execute('SELECT * FROM return_label_requests').fetchone()
             self.assertEqual(row['idempotency_key'], first)
-        later = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+        later, completed = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
         self.assertEqual(later, first)
+        self.assertIsNone(completed)
 
     def test_different_items_get_different_keys(self):
-        first = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
-        second = reserve_return_label_request('CL1002', 'it00005', database_path=self.database_path)
+        first, _ = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+        second, _ = reserve_return_label_request('CL1002', 'it00005', database_path=self.database_path)
         self.assertNotEqual(first, second)
 
     def test_completed_return_does_not_reserve_another_request(self):
         with connect_database(self.database_path) as connection:
             connection.execute('INSERT INTO returns (return_id, order_id, item_id, label_url) '
                                "VALUES ('RET-OLD', 'CL1002', 'it00004', 'https://example.test/label')")
-        key = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+            saved = dict(connection.execute('SELECT * FROM returns').fetchone())
+        key, completed = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
         self.assertIsNone(key)
+        self.assertEqual(dict(completed), saved)
         with connect_database(self.database_path) as connection:
             self.assertEqual(connection.execute('SELECT * FROM return_label_requests').fetchall(), [])
 

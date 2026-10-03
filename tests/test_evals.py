@@ -244,9 +244,10 @@ class TestEvalRequirements(unittest.TestCase):
             for traces in ([verification, first, second],
                            [verification, first, verification, second]):
                 with self.subTest(verification_count=len(traces) - 2):
-                    failures, _ = grade_case(duplicate_case,
-                                             run(traces, rows=[row], approvals=approvals))
+                    failures, grades = grade_case(duplicate_case,
+                                                  run(traces, rows=[row], approvals=approvals))
                     self.assertEqual(failures, [])
+                    self.assertEqual(grades, {key: True for key in duplicate_case["requirements"]})
 
     def test_case_grader_checks_order_outputs_arguments_and_support_row(self):
         fixture = case(["ESC-01"], tool_sequence=["verify_order", "request_human_support"],

@@ -3,14 +3,18 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from argparse import ArgumentParser
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from agents import Agent, Runner
 from agents.items import ToolCallItem, ToolCallOutputItem
 from dotenv import load_dotenv
 
+from evals.mock_label_provider import mock_label_provider
 from src.agent import ciderlane_agent
 from src.context import ReturnContext
 from src.storage import DATABASE_PATH_ENV_VAR, connect_database, initialize_database
@@ -125,12 +129,12 @@ def collect_run_items(result: Any, traces: list[ToolTrace], by_call_id: dict[str
 def database_rows(table: str) -> list[dict[str, Any]]:
     if table not in {"returns", "support_cases"}:
         raise ValueError(table)
-    with connect_database() as connection:
+    with closing(connect_database()) as connection:
         return [dict(row) for row in connection.execute(f"SELECT * FROM {table} ORDER BY rowid")]
 
 
 def return_count() -> int:
-    with connect_database() as connection:
+    with closing(connect_database()) as connection:
         return connection.execute("SELECT count(*) FROM returns").fetchone()[0]
 
 
@@ -195,6 +199,7 @@ def grade_requirements(case: dict[str, Any], run: CaseRun) -> dict[str, bool]:
     current_verified_order_id: str | None = None
     latest_evaluation: tuple[str, dict[str, Any]] | None = None
     expected_return_rows: dict[tuple[str, str], dict[str, Any]] = {}
+    support_by_id = {row.get("case_id"): row for row in run.support_cases_rows}
     created = 0
     start_calls = [trace for trace in traces if trace.name == "start_return"]
 
@@ -241,10 +246,7 @@ def grade_requirements(case: dict[str, Any], run: CaseRun) -> dict[str, bool]:
             if reason != "verification_failed":
                 required_decision = "exception_flow" if reason == "return_exception" else "blocked"
                 case_id = output.get("case_id")
-                support_row = next(
-                    (row for row in run.support_cases_rows if row.get("case_id") == case_id),
-                    None,
-                ) if case_id else None
+                support_row = support_by_id.get(case_id) if case_id else None
                 if (reason not in {"return_exception", "final_sale_dispute", "customer_remains_angry"}
                         or output.get("status") not in {"case_created", "case_already_exists"}
                         or latest_evaluation is None
@@ -290,11 +292,13 @@ def grade_response(final_response: str, requirements: list[str]) -> ResponseGrad
     return result.final_output
 
 
-def grade_case(case: dict[str, Any], run: CaseRun) -> tuple[list[str], ResponseGrade]:
+def grade_case(case: dict[str, Any], run: CaseRun) -> tuple[list[str], dict[str, bool]]:
+    """Return failures and requirement grades so the CLI does not grade twice."""
     expected = case["expected"]
     traces = run.tool_traces
     names = [trace.name for trace in traces]
-    failures = [f"{key}: failed" for key, passed in grade_requirements(case, run).items() if not passed]
+    requirement_grades = grade_requirements(case, run)
+    failures = [f"{key}: failed" for key, passed in requirement_grades.items() if not passed]
     for name in expected.get("required_tool_calls", []):
         if name not in names:
             failures.append(f"missing tool call: {name}")
@@ -324,12 +328,13 @@ def grade_case(case: dict[str, Any], run: CaseRun) -> tuple[list[str], ResponseG
     if len(run.support_cases_rows) != expected.get("support_rows", 0):
         failures.append(f"support rows: expected {expected.get('support_rows', 0)}, got {len(run.support_cases_rows)}")
     support_by_id = {row["case_id"]: row for row in run.support_cases_rows}
+    support_output_ids = {trace.output.get("case_id") for trace in traces
+                          if trace.name == "request_human_support" and isinstance(trace.output, dict)}
     for row in run.support_cases_rows:
         for field, value in expected.get("support_row", {}).items():
             if row.get(field) != value:
                 failures.append(f"support row {field}: expected {value!r}, got {row.get(field)!r}")
-        if row["case_id"] not in [t.output.get("case_id") for t in traces
-                                   if t.name == "request_human_support" and isinstance(t.output, dict)]:
+        if row["case_id"] not in support_output_ids:
             failures.append("support row does not match a tool output")
     for trace in traces:
         if trace.name != "request_human_support" or not isinstance(trace.output, dict):
@@ -347,11 +352,10 @@ def grade_case(case: dict[str, Any], run: CaseRun) -> tuple[list[str], ResponseG
         failures.append(f"unmet response requirements: {response_grade.unmet_requirements}")
     if response_grade.human_review_required != expected["human_review_required"]:
         failures.append(f"human_review_required: expected {expected['human_review_required']!r}, got {response_grade.human_review_required!r}")
-    return failures, response_grade
+    return failures, requirement_grades
 
 
-def main() -> int:
-    load_dotenv()
+def run_suite() -> int:
     suite = load_eval_suite()
     previous_date = os.environ.get(REFERENCE_DATE_ENV_VAR)
     os.environ[REFERENCE_DATE_ENV_VAR] = suite["reference_date"]
@@ -368,8 +372,8 @@ def main() -> int:
                 print("  WRITE-01: FAIL")
                 print(f"FAIL\n  - {error}\n")
                 continue
-            failures, _ = grade_case(case, run)
-            for key, value in grade_requirements(case, run).items():
+            failures, requirement_grades = grade_case(case, run)
+            for key, value in requirement_grades.items():
                 print(f"  {key}: {'PASS' if value else 'FAIL'}")
             if failures:
                 print("FAIL")
@@ -387,6 +391,27 @@ def main() -> int:
             os.environ[REFERENCE_DATE_ENV_VAR] = previous_date
     print(f"Summary: {passed}/{len(suite['cases'])} cases passed")
     return 0 if passed == len(suite["cases"]) else 1
+
+
+def main(argv=None) -> int:
+    parser = ArgumentParser(description="Run agent evals with a local mock label API.")
+    parser.add_argument("--use-configured-provider", action="store_true",
+                        help="Use the label provider configured in the environment or .env.")
+    args = parser.parse_args(argv)
+    load_dotenv()
+    if args.use_configured_provider:
+        print("Label provider: configured HTTP endpoint")
+        return run_suite()
+
+    # Keep mock configuration scoped to this eval run; restore settings afterward.
+    with mock_label_provider() as url, patch.dict(os.environ, {
+        "CIDERLANE_LABEL_PROVIDER_URL": url,
+        "CIDERLANE_LABEL_PROVIDER_TOKEN": "mock-token",
+        "CIDERLANE_LABEL_TIMEOUT_SECONDS": "5",
+        "CIDERLANE_LABEL_MAX_ATTEMPTS": "3",
+    }):
+        print(f"Label provider: local mock HTTP API ({url})")
+        return run_suite()
 
 
 if __name__ == "__main__":
