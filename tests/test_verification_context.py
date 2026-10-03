@@ -33,6 +33,10 @@ class TestVerificationContext(unittest.IsolatedAsyncioTestCase):
         date_patch.start()
         self.addCleanup(date_patch.stop)
         self.ctx = RunContextWrapper(context=ReturnContext())
+        provider_patch = patch('src.tools.return_tools.get_return_label_provider')
+        self.provider_factory = provider_patch.start()
+        self.addCleanup(provider_patch.stop)
+        self.provider_factory.return_value.create_label.return_value = 'https://carrier.example.test/label.pdf'
 
     async def invoke(self, tool, context_wrapper, arguments):
         raw_arguments = json.dumps(arguments)
@@ -65,6 +69,7 @@ class TestVerificationContext(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "return_not_created")
         self.assertEqual(result["error"], "order_not_verified")
         self.assertNotIn("label_url", result)
+        self.provider_factory.assert_not_called()
 
     async def test_unverified_conversation_is_rejected(self):
         self.assert_not_verified(await self.create_label())
@@ -85,6 +90,7 @@ class TestVerificationContext(unittest.IsolatedAsyncioTestCase):
         result = await self.verify(order_id="CL1001")
         self.assertTrue(result["verified"])
         self.assertEqual((await self.create_label())["error"], "order_or_item_not_found")
+        self.provider_factory.assert_not_called()
 
     async def test_verification_does_not_leak_to_new_conversation(self):
         await self.verify()

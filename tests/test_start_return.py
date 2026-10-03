@@ -3,8 +3,9 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from agents import RunContextWrapper
 from agents.tool_context import ToolContext
@@ -12,6 +13,7 @@ from agents.tool_context import ToolContext
 from src.agent import ciderlane_agent
 from src.agent_tools import start_return_tool
 from src.context import ReturnContext, ReturnEvaluation
+from src.return_label_provider import ReturnLabelProviderError
 from src.storage import connect_database, initialize_database
 from src.tools.order_tools import load_orders
 from src.tools.return_tools import check_return_eligibility, start_return
@@ -31,22 +33,50 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(environment.stop)
         initialize_database()
         self.context = ReturnContext(verified_order_id='CL1002')
+        provider_patch = patch('src.tools.return_tools.get_return_label_provider')
+        self.provider_factory = provider_patch.start()
+        self.addCleanup(provider_patch.stop)
+        self.provider = self.provider_factory.return_value
+        self.provider.create_label.return_value = 'https://carrier.example.test/label.pdf'
 
     def rows(self, table='returns'):
         with connect_database() as connection:
             return [dict(row) for row in connection.execute(f'SELECT * FROM {table}')]
 
     def test_no_prior_check_persists_return_and_label(self):
+        def create_label(**request):
+            pending = self.rows('return_label_requests')
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(request, {'order_id': 'CL1002', 'item_id': 'it00004',
+                                      'idempotency_key': pending[0]['idempotency_key']})
+            self.assertEqual(self.rows(), [])
+            # An independent writer can acquire the lock while HTTP is in progress.
+            with closing(connect_database()) as connection:
+                connection.execute('BEGIN IMMEDIATE')
+                connection.rollback()
+            return 'https://carrier.example.test/label.pdf'
+        self.provider.create_label.side_effect = create_label
         self.assertIsNone(self.context.current_evaluation)
         result = start_return('it00004', context=self.context)
         self.assertEqual(result['status'], 'return_created')
         self.assertEqual(result['decision'], 'standard_return')
         self.assertEqual(result['return_id'], 'RET-CL1002-IT00004')
         self.assertEqual(result['label_url'],
-                         'https://mock.ciderlane.com/returns/RET-CL1002-IT00004/label')
+                         'https://carrier.example.test/label.pdf')
         self.assertEqual(self.rows(), [{key: result[key] for key in (
             'return_id', 'order_id', 'item_id', 'label_url', 'created_at')}])
         self.assertEqual(self.context.current_evaluation.decision, 'standard_return')
+        self.assertEqual(self.rows('return_label_requests'), [])
+
+    def test_provider_failures_leave_only_a_pending_request(self):
+        for code in ('label_provider_timeout', 'label_provider_unavailable',
+                     'label_provider_invalid_response'):
+            with self.subTest(code=code):
+                self.provider.create_label.side_effect = ReturnLabelProviderError(code)
+                result = start_return('it00004', context=self.context)
+                self.assertEqual(result, {'status': 'return_not_created', 'error': code})
+                self.assertEqual(self.rows(), [])
+                self.assertEqual(len(self.rows('return_label_requests')), 1)
 
     def test_failed_attempts_clear_stale_evaluation_without_writes(self):
         for order, item, reason, error in (
@@ -65,6 +95,8 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNone(context.current_evaluation)
                 self.assertNotIn('label_url', result)
                 self.assertEqual(self.rows(), [])
+        self.provider_factory.assert_not_called()
+        self.assertEqual(self.rows('return_label_requests'), [])
 
     def test_fresh_facts_override_old_eligible_result(self):
         for field, value in (('final_sale', True), ('category', 'swimwear'),
@@ -82,6 +114,7 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(self.context.current_evaluation.decision, 'blocked')
                 self.assertNotIn('label_url', result)
                 self.assertEqual(self.rows(), [])
+        self.provider_factory.assert_not_called()
 
     def test_blocked_and_exception_do_not_write_and_preserve_support_provenance(self):
         for reason, decision, escalation in (
@@ -96,6 +129,8 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(self.rows('support_cases')), 0 if reason is None else 1)
             support = request_human_support(escalation, 'Review requested.', context=self.context)
             self.assertEqual(support['status'], 'case_created')
+        self.provider_factory.assert_not_called()
+        self.assertEqual(self.rows('return_label_requests'), [])
 
     def test_retries_are_global_and_ignore_changed_policy(self):
         first = start_return('it00004', context=self.context)
@@ -110,34 +145,27 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(repeated['created_at'], first['created_at'])
             self.assertIsNone(context.current_evaluation)
         self.assertEqual(len(self.rows()), 1)
+        self.provider.create_label.assert_called_once()
 
     def test_unique_constraint_and_conflict_recovery(self):
-        first = start_return('it00004', context=self.context)
-        # Hide the initial SELECT to simulate another writer winning the race.
-        # The INSERT still reaches SQLite and hits its real UNIQUE constraint.
-        with connect_database() as connection:
+        def another_caller_completes(**request):
+            with closing(connect_database()) as connection, connection:
+                connection.execute('INSERT INTO returns (return_id, order_id, item_id, label_url) '
+                                   'VALUES (?, ?, ?, ?)',
+                                   ('other-return', 'CL1002', 'it00004', 'https://carrier.example.test/other'))
+            return 'https://carrier.example.test/label.pdf'
+        self.provider.create_label.side_effect = another_caller_completes
+        result = start_return('it00004', context=self.context)
+        self.assertEqual(result['status'], 'return_already_exists')
+        self.assertEqual(result['return_id'], 'other-return')
+        self.assertEqual(result['label_url'], 'https://carrier.example.test/other')
+        self.assertIsNone(self.context.current_evaluation)
+        self.assertEqual(len(self.rows()), 1)
+        self.assertEqual(self.rows('return_label_requests'), [])
+        with closing(connect_database()) as connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute('INSERT INTO returns (return_id, order_id, item_id, label_url) '
                                    'VALUES (?, ?, ?, ?)', ('different-id', 'CL1002', 'it00004', 'label'))
-            connection.rollback()
-            proxy = MagicMock(wraps=connection)
-            proxy.__enter__.return_value = proxy
-            proxy.__exit__.side_effect = connection.__exit__
-            calls = 0
-            def execute(sql, parameters=()):
-                nonlocal calls
-                calls += 1
-                if calls == 1:
-                    cursor = MagicMock()
-                    cursor.fetchone.return_value = None
-                    return cursor
-                return connection.execute(sql, parameters)
-            proxy.execute.side_effect = execute
-            with patch('src.tools.return_tools.connect_database', return_value=proxy):
-                result = start_return('it00004', context=self.context)
-        self.assertEqual(result['status'], 'return_already_exists')
-        self.assertEqual(result['return_id'], first['return_id'])
-        self.assertEqual(len(self.rows()), 1)
 
     async def test_schema_and_forged_state_cannot_authorize_write(self):
         self.assertEqual({tool.name for tool in ciderlane_agent.tools}, {
@@ -158,6 +186,7 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['error'], 'order_not_verified')
         self.assertIsNone(context.verified_order_id)
         self.assertEqual(self.rows(), [])
+        self.provider_factory.assert_not_called()
 
     async def test_sdk_validation_failure_clears_stale_evaluation(self):
         check_return_eligibility('it00003', 'damaged', context=self.context)
@@ -173,3 +202,4 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
         support = request_human_support('return_exception', 'Review requested.',
                                         context=self.context)
         self.assertEqual(support['error'], 'trusted_evaluation_required')
+        self.provider_factory.assert_not_called()

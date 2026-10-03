@@ -61,6 +61,10 @@ class TestApproval(unittest.TestCase):
         self.addCleanup(environment.stop)
         initialize_database()
         self.context = ReturnContext(verified_order_id='CL1002')
+        provider_patch = patch('src.tools.return_tools.get_return_label_provider')
+        self.provider_factory = provider_patch.start()
+        self.addCleanup(provider_patch.stop)
+        self.provider_factory.return_value.create_label.return_value = 'https://carrier.example.test/label.pdf'
 
     def rows(self, table='returns'):
         with connect_database() as connection:
@@ -82,6 +86,8 @@ class TestApproval(unittest.TestCase):
         self.assertEqual(self.rows(), [])
         self.assertIn('white short dress (item ID it00004)',
                       approval_description(result.interruptions[0], self.context))
+        self.provider_factory.assert_not_called()
+        self.assertEqual(self.rows('return_label_requests'), [])
 
     def test_rejection_does_not_execute_or_write(self):
         agent, model, result = self.begin()
@@ -92,6 +98,8 @@ class TestApproval(unittest.TestCase):
         tool.assert_not_called()
         self.assertEqual(resumed.final_output, 'Done.')
         self.assertEqual(self.rows(), [])
+        self.provider_factory.assert_not_called()
+        self.assertEqual(self.rows('return_label_requests'), [])
 
     def test_approval_executes_and_persists(self):
         agent, model, result = self.begin()
@@ -116,6 +124,7 @@ class TestApproval(unittest.TestCase):
         self.assertEqual(resumed.final_output, 'Done.')
         self.assertEqual(self.rows(), [])
         self.assertEqual(self.context.current_evaluation.decision, 'blocked')
+        self.provider_factory.assert_not_called()
 
     def test_approved_exception_still_allows_support_escalation(self):
         agent, model, result = self.begin('it00002', 'damaged', support=True)
@@ -126,6 +135,7 @@ class TestApproval(unittest.TestCase):
         self.assertEqual(self.rows(), [])
         self.assertEqual(len(self.rows('support_cases')), 1)
         self.assertEqual(self.rows('support_cases')[0]['eligibility_decision'], 'exception_flow')
+        self.provider_factory.assert_not_called()
 
     def test_cli_prompts_for_concrete_item_and_resumes(self):
         agent, model, result = self.begin()
@@ -141,6 +151,7 @@ class TestApproval(unittest.TestCase):
             resumed = resolve_approvals(result, self.context, prompt=lambda _: 'no')
         self.assertEqual(resumed.final_output, 'Done.')
         self.assertEqual(self.rows(), [])
+        self.provider_factory.assert_not_called()
 
     def test_unresolved_item_is_rejected_without_prompt_or_write(self):
         for order_id, item_id in (('CL1002', 'missing'), ('CL1001', 'it00004'),

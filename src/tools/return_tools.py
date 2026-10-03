@@ -1,10 +1,12 @@
 import os
 import sqlite3
+from contextlib import closing
 from datetime import date, datetime
 from typing import Literal
 
-from src.storage import connect_database, initialize_database
+from src.storage import connect_database, initialize_database, reserve_return_label_request
 from src.context import ReturnContext, ReturnEvaluation
+from src.return_label_provider import ReturnLabelProviderError, get_return_label_provider
 from src.tools.order_tools import load_orders
 
 
@@ -172,39 +174,64 @@ def start_return(
     if item is None:
         return {"status": "return_not_created", "error": "order_or_item_not_found"}
 
-    initialize_database(database_path)
     lookup = "SELECT * FROM returns WHERE order_id = ? AND item_id = ?"
-    with connect_database(database_path) as connection:
-        existing = connection.execute(lookup, (order_id, item_id)).fetchone()
-        if existing is not None:
+    pair = (order_id, item_id)
+    try:
+        initialize_database(database_path)
+        with closing(connect_database(database_path)) as connection:
+            existing = connection.execute(lookup, pair).fetchone()
+    except sqlite3.Error:
+        return {"status": "return_not_created", "error": "return_storage_unavailable"}
+    if existing is not None:
+        return {"status": "return_already_exists", **dict(existing)}
+
+    result = evaluate_return_policy(
+        order["delivered_date"], item["category"], item["final_sale"],
+        reason, today=_current_date(),
+    )
+    context.current_evaluation = ReturnEvaluation(
+        order_id=order_id,
+        item_id=item_id,
+        decision=result["decision"],
+        policy_codes=tuple(result["policy_codes"]),
+    )
+    if result["decision"] != "standard_return":
+        return {"status": "return_not_created", **result}
+
+    try:
+        # Reservation commits and closes its connection before any HTTP call.
+        key = reserve_return_label_request(order_id, item_id, database_path=database_path)
+        if key is None:
+            with closing(connect_database(database_path)) as connection:
+                existing = connection.execute(lookup, pair).fetchone()
+            context.current_evaluation = None
             return {"status": "return_already_exists", **dict(existing)}
 
-        result = evaluate_return_policy(
-            order["delivered_date"], item["category"], item["final_sale"],
-            reason, today=_current_date(),
+        label_url = get_return_label_provider().create_label(
+            order_id=order_id, item_id=item_id, idempotency_key=key,
         )
-        context.current_evaluation = ReturnEvaluation(
-            order_id=order_id,
-            item_id=item_id,
-            decision=result["decision"],
-            policy_codes=tuple(result["policy_codes"]),
-        )
-        if result["decision"] != "standard_return":
-            return {"status": "return_not_created", **result}
+        with closing(connect_database(database_path)) as connection:
+            with connection:
+                # Another caller may have completed the return during HTTP.
+                connection.execute("BEGIN IMMEDIATE")
+                existing = connection.execute(lookup, pair).fetchone()
+                if existing is None:
+                    return_id = f"RET-{order_id}-{item_id}".upper()
+                    connection.execute(
+                        "INSERT INTO returns (return_id, order_id, item_id, label_url) "
+                        "VALUES (?, ?, ?, ?)", (return_id, order_id, item_id, label_url),
+                    )
+                # Commit both changes together; rollback preserves the pending key.
+                connection.execute(
+                    "DELETE FROM return_label_requests WHERE order_id = ? AND item_id = ?", pair,
+                )
+                saved = connection.execute(lookup, pair).fetchone()
+    except ReturnLabelProviderError as error:
+        return {"status": "return_not_created", "error": error.code}
+    except sqlite3.Error:
+        return {"status": "return_not_created", "error": "return_storage_unavailable"}
 
-        return_id = f"RET-{order_id}-{item_id}".upper()
-        label_url = f"https://mock.ciderlane.com/returns/{return_id}/label"
-        try:
-            connection.execute(
-                "INSERT INTO returns (return_id, order_id, item_id, label_url) "
-                "VALUES (?, ?, ?, ?)",
-                (return_id, order_id, item_id, label_url),
-            )
-        except sqlite3.IntegrityError:
-            existing = connection.execute(lookup, (order_id, item_id)).fetchone()
-            if existing is None:
-                raise
-            return {"status": "return_already_exists", **dict(existing)}
-
-        saved = connection.execute(lookup, (order_id, item_id)).fetchone()
+    if existing is not None:
+        context.current_evaluation = None
+        return {"status": "return_already_exists", **dict(saved)}
     return {"status": "return_created", **result, **dict(saved)}

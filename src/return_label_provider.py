@@ -1,6 +1,7 @@
 """Bounded HTTP retries using application configuration and one durable key."""
 
 import math
+import os
 from dataclasses import dataclass, field
 from time import sleep
 from urllib.parse import urlsplit
@@ -93,3 +94,16 @@ class ReturnLabelProvider:
         if not _is_http_url(label_url):
             raise ReturnLabelProviderError("label_provider_invalid_response")
         return label_url
+
+
+def get_return_label_provider() -> ReturnLabelProvider:
+    """Read application settings; none of these are model-visible arguments."""
+    try:
+        return ReturnLabelProvider(
+            url=os.getenv("CIDERLANE_LABEL_PROVIDER_URL", ""),
+            token=os.getenv("CIDERLANE_LABEL_PROVIDER_TOKEN", ""),
+            timeout_seconds=float(os.getenv("CIDERLANE_LABEL_TIMEOUT_SECONDS", "5")),
+            max_attempts=int(os.getenv("CIDERLANE_LABEL_MAX_ATTEMPTS", "3")),
+        )
+    except ValueError:
+        raise ReturnLabelProviderError("label_provider_not_configured") from None
