@@ -2,8 +2,10 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+from uuid import UUID
 
-from src.storage import connect_database, initialize_database
+from src.storage import connect_database, initialize_database, reserve_return_label_request
 
 
 # Freeze the pre-conversation schema so migration tests exercise a real upgrade.
@@ -193,3 +195,52 @@ class TestInitializeDatabase(unittest.TestCase):
                             connection.execute(
                                 insert, (f"CASE-{fields[0]}-reopened", "first", *fields),
                             )
+
+
+class TestReturnLabelRequestReservation(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.database_path = Path(directory.name) / "test.db"
+        initialize_database(self.database_path)
+
+    def test_key_is_committed_reused_and_connection_closed_before_return(self):
+        connection = connect_database(self.database_path)
+        self.addCleanup(connection.close)
+        with patch('src.storage.connect_database', return_value=connection):
+            first = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+        self.assertEqual(str(UUID(first)), first)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            connection.execute('SELECT 1')  # The helper must have closed this connection.
+
+        # A fresh connection sees the committed key and can acquire a write lock.
+        with connect_database(self.database_path) as reader:
+            reader.execute('BEGIN IMMEDIATE')
+            row = reader.execute('SELECT * FROM return_label_requests').fetchone()
+            self.assertEqual(row['idempotency_key'], first)
+        later = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+        self.assertEqual(later, first)
+
+    def test_different_items_get_different_keys(self):
+        first = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+        second = reserve_return_label_request('CL1002', 'it00005', database_path=self.database_path)
+        self.assertNotEqual(first, second)
+
+    def test_completed_return_does_not_reserve_another_request(self):
+        with connect_database(self.database_path) as connection:
+            connection.execute('INSERT INTO returns (return_id, order_id, item_id, label_url) '
+                               "VALUES ('RET-OLD', 'CL1002', 'it00004', 'https://example.test/label')")
+        key = reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+        self.assertIsNone(key)
+        with connect_database(self.database_path) as connection:
+            self.assertEqual(connection.execute('SELECT * FROM return_label_requests').fetchall(), [])
+
+    def test_failed_reservation_raises_without_saving_a_request(self):
+        with connect_database(self.database_path) as connection:
+            # Force a real SQLite write failure instead of mocking persistence.
+            connection.execute('CREATE TRIGGER fail_reservation BEFORE INSERT ON return_label_requests '
+                               "BEGIN SELECT RAISE(ABORT, 'injected write failure'); END")
+        with self.assertRaises(sqlite3.IntegrityError):
+            reserve_return_label_request('CL1002', 'it00004', database_path=self.database_path)
+        with connect_database(self.database_path) as connection:
+            self.assertEqual(connection.execute('SELECT * FROM return_label_requests').fetchall(), [])

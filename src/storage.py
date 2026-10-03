@@ -1,6 +1,8 @@
 import os
 import sqlite3
+from contextlib import closing
 from pathlib import Path
+from uuid import uuid4
 
 
 DATABASE_PATH = Path(__file__).parents[1] / "data" / "ciderlane.db"
@@ -100,3 +102,35 @@ def initialize_database(database_path=None):
             )
             connection.execute("DROP INDEX IF EXISTS unique_open_support_case")
         connection.execute(CREATE_OPEN_CASE_UNIQUE_INDEX)
+
+
+def reserve_return_label_request(
+    order_id: str, item_id: str, *, database_path=None,
+) -> str | None:
+    """Return a committed key, or None when the return is already completed."""
+    pair = (order_id, item_id)
+    with closing(connect_database(database_path)) as connection:
+        with connection:
+            # Lock before reading so concurrent callers cannot reserve different keys.
+            connection.execute("BEGIN IMMEDIATE")
+            completed = connection.execute(
+                "SELECT 1 FROM returns WHERE order_id = ? AND item_id = ?", pair,
+            ).fetchone()
+            if completed is not None:
+                return None
+
+            pending = connection.execute(
+                "SELECT idempotency_key FROM return_label_requests "
+                "WHERE order_id = ? AND item_id = ?", pair,
+            ).fetchone()
+            if pending is not None:
+                idempotency_key = pending["idempotency_key"]
+            else:
+                # Generate once; future attempts reload this persisted value.
+                idempotency_key = str(uuid4())
+                connection.execute(
+                    "INSERT INTO return_label_requests (order_id, item_id, idempotency_key) "
+                    "VALUES (?, ?, ?)", (*pair, idempotency_key),
+                )
+        # The transaction has committed; closing releases the connection next.
+    return idempotency_key
