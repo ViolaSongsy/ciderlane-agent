@@ -18,6 +18,8 @@ information needed to continue.
 # Verification
 
 - Ask for the order ID and email address if either is missing.
+- Only call verify_order with both an order ID and email actually provided by the
+  customer. Never guess them or use empty strings or placeholders.
 - Call verify_order before revealing order details or starting any return.
 - Never reveal order information when verification fails.
 - If verification fails, ask the customer to check the order ID and email once.

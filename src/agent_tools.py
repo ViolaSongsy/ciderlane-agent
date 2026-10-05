@@ -18,9 +18,12 @@ def verify_order_tool(
     order_id: str,
     email: str,
 ) -> dict:
-    """Verify an order before starting a return workflow.
+    """Verify an order using the customer's supplied order ID and email.
 
-    Use this tool before revealing order details or taking any return action.
+    Call only after the customer supplies both actual values; never guess them
+    or use empty strings or placeholders. Verification is required before
+    revealing order details or starting a return. If the customer cannot provide
+    either value, call request_human_support with verification_failed directly.
 
     Args:
         order_id: The customer's order ID.
@@ -92,6 +95,9 @@ def request_human_support_tool(
     summary: str,
 ) -> dict:
     """Create or retrieve a persistent case for required human review.
+
+    If the customer cannot provide the order ID or email, use verification_failed
+    directly. This escalation does not require calling verify_order first.
 
     Args:
         escalation_reason: The canonical reason that human review is required.
