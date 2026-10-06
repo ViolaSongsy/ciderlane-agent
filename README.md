@@ -19,7 +19,7 @@ This project explores how to separate an LLM's conversational reasoning from det
 
 SQLite 3.35 or newer is required for `INSERT ... RETURNING`.
 
-Set these application settings in the environment or `.env` for the CLI:
+Set these application settings in the environment or `.env` for the CLI or HTTP service:
 
 | Variable | Value |
 | --- | --- |
@@ -34,12 +34,63 @@ The application commits the key to `return_label_requests` before HTTP. Timeout,
 
 Missing or invalid provider settings return `label_provider_not_configured`. See [tool behavior](docs/tools.md#tool-start_return) for all failure codes. Live agent evals also use the configured provider; deterministic tests mock the provider or HTTP boundary.
 
+## HTTP + Browser Demo (M7)
+
+From the project root, install dependencies into the existing virtual environment:
+
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+Set `OPENAI_API_KEY` in the environment or `.env`. For fake labels, start the local
+mock provider in another terminal:
+
+```bash
+.venv/bin/python -m evals.mock_label_provider
+```
+
+Then start the demo with one server worker:
+
+```bash
+CIDERLANE_LABEL_PROVIDER_URL=http://127.0.0.1:8765/labels \
+CIDERLANE_LABEL_PROVIDER_TOKEN=mock-token \
+CIDERLANE_REFERENCE_DATE=2026-08-31 \
+.venv/bin/python -m uvicorn src.api:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Open the [local demo](http://127.0.0.1:8000/). Try: "Please return the white short
+dress from order CL1002. My email is maya@example.com." The reference-date override
+keeps the bundled August orders within the return window; omit it to use today's
+date. The page displays every proposed return before Approve / Reject.
+
+`POST /sessions` creates a server-generated `session_id`.
+`POST /sessions/{session_id}/chat` accepts only `{"message": "..."}` and returns
+`completed` with a response or `approval_required` with descriptions and an opaque
+`approval_id`. `POST /sessions/{session_id}/approval` accepts
+`{"approval_id": "...", "decision": "approve"}` (or `"reject"`) and resumes the
+stored SDK state. Chat while approval is pending, and consumed or stale approval
+requests, return HTTP 409. The browser supplies no trusted order/policy state,
+tool arguments, or business idempotency keys.
+
+Sessions live only in one process. Reloading the page creates a new session;
+restarting the server loses context, conversation history, and pending approvals.
+Use a single worker. Each session retains the existing `ReturnContext` and its
+independent `conversation_id`; existing SQLite return/support persistence and
+idempotency remain unchanged. This local demo has no authentication.
+
 ## Tests
 
 From the project root:
 
 ```bash
 .venv/bin/python -m unittest discover -s tests
+```
+
+The focused HTTP tests use a scripted SDK model, temporary SQLite databases, and a
+mock label provider; they require no API key or live model/provider calls:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -p 'test_api.py'
 ```
 
 To run agent evals with the local mock HTTP API:
