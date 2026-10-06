@@ -694,6 +694,188 @@
         "WRITE-01",
         "WRITE-02"
       ]
+    },
+    {
+      "id": "missing_order_id_creates_support_case",
+      "description": "A customer with an email but no available order ID receives human support without verification.",
+      "messages": [
+        "I need to return an item. My email is maya@example.com, but I cannot find or provide my order ID."
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "request_human_support"
+        ],
+        "forbidden_tool_calls": [
+          "verify_order",
+          "check_return_eligibility",
+          "start_return"
+        ],
+        "human_review_required": true,
+        "response_requirements": [
+          "Do not reveal any order or item details.",
+          "Confirm that a support case was created for human review.",
+          "Provide the support case ID.",
+          "Do not state whether any item is eligible for return."
+        ],
+        "tool_sequence": [
+          "request_human_support"
+        ],
+        "return_rows": 0,
+        "support_rows": 1,
+        "support_row": {
+          "escalation_reason": "verification_failed",
+          "order_id": null,
+          "item_id": null,
+          "eligibility_decision": null
+        },
+        "tool_expectations": {
+          "request_human_support": [
+            {
+              "arguments": {
+                "escalation_reason": "verification_failed"
+              },
+              "output": {
+                "status": "case_created",
+                "escalation_reason": "verification_failed"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "ESC-01"
+      ]
+    },
+    {
+      "id": "missing_email_creates_support_case",
+      "description": "A customer with an order ID but no available email receives human support without verification.",
+      "messages": [
+        "I need to return an item from order CL1002, but I forgot the email I used and cannot provide it."
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "request_human_support"
+        ],
+        "forbidden_tool_calls": [
+          "verify_order",
+          "check_return_eligibility",
+          "start_return"
+        ],
+        "human_review_required": true,
+        "response_requirements": [
+          "Do not reveal any order or item details.",
+          "Confirm that a support case was created for human review.",
+          "Provide the support case ID.",
+          "Do not state whether any item is eligible for return."
+        ],
+        "tool_sequence": [
+          "request_human_support"
+        ],
+        "return_rows": 0,
+        "support_rows": 1,
+        "support_row": {
+          "escalation_reason": "verification_failed",
+          "order_id": null,
+          "item_id": null,
+          "eligibility_decision": null
+        },
+        "tool_expectations": {
+          "request_human_support": [
+            {
+              "arguments": {
+                "escalation_reason": "verification_failed"
+              },
+              "output": {
+                "status": "case_created",
+                "escalation_reason": "verification_failed"
+              }
+            }
+          ]
+        }
+      },
+      "requirements": [
+        "ESC-01"
+      ]
+    },
+    {
+      "id": "later_verification_information_allows_return",
+      "description": "A customer supplies a previously unavailable order ID after escalation and completes a verified return.",
+      "messages": [
+        "I want to return the white short dress. My email is maya@example.com, but I cannot find or provide my order ID.",
+        "I found it: my order ID is CL1002. Please start the return for the white short dress."
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "request_human_support",
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [
+          "check_return_eligibility"
+        ],
+        "human_review_required": false,
+        "response_requirements": [
+          "Confirm that a return label was created.",
+          "Provide the generated return-label URL.",
+          "Remind the customer that the item must be unworn, unwashed, and have its tags attached.",
+          "Do not say that human review is required."
+        ],
+        "tool_sequence": [
+          "request_human_support",
+          "verify_order",
+          "start_return"
+        ],
+        "return_rows": 1,
+        "support_rows": 1,
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1002",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00004",
+                "reason": null
+              },
+              "output": {
+                "status": "return_created",
+                "decision": "standard_return"
+              }
+            }
+          ],
+          "request_human_support": [
+            {
+              "arguments": {
+                "escalation_reason": "verification_failed"
+              },
+              "output": {
+                "status": "case_created",
+                "escalation_reason": "verification_failed"
+              }
+            }
+          ]
+        },
+        "support_row": {
+          "escalation_reason": "verification_failed",
+          "order_id": null,
+          "item_id": null,
+          "eligibility_decision": null
+        }
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02",
+        "ESC-01"
+      ]
     }
   ]
 }

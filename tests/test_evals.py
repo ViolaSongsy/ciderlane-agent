@@ -264,6 +264,34 @@ class TestEvalRequirements(unittest.TestCase):
         self.assertTrue(any("status" in failure for failure in failures))
         self.assertTrue(any("support row" in failure for failure in failures))
 
+    def test_unavailable_verification_cases_reject_empty_verification_calls(self):
+        case_ids = {
+            "missing_verification_information_creates_support_case",
+            "missing_order_id_creates_support_case",
+            "missing_email_creates_support_case",
+        }
+        fixtures = [item for item in load_eval_suite()["cases"] if item["id"] in case_ids]
+        self.assertEqual({item["id"] for item in fixtures}, case_ids)
+        support_row = {
+            "case_id": "C", "escalation_reason": "verification_failed",
+            "summary": "Customer cannot provide verification information.",
+            "order_id": None, "item_id": None, "eligibility_decision": None,
+        }
+        support = ToolTrace("request_human_support", {
+            "escalation_reason": support_row["escalation_reason"],
+            "summary": support_row["summary"],
+        }, {"status": "case_created", **support_row})
+        empty_verification = ToolTrace("verify_order", {"order_id": "", "email": ""},
+                                       {"verified": False, "error": "order_not_found"})
+        with patch("evals.run_evals.grade_response", return_value=ResponseGrade(True, [])):
+            for fixture in fixtures:
+                with self.subTest(case_id=fixture["id"]):
+                    failures, _ = grade_case(fixture, run([support], support=[support_row]))
+                    self.assertEqual(failures, [])
+                    failures, _ = grade_case(fixture, run(
+                        [empty_verification, support], support=[support_row]))
+                    self.assertIn("forbidden tool call: verify_order", failures)
+
 
 class TestEvalHarness(unittest.TestCase):
     def test_approval_observation_and_case_database_isolation(self):
