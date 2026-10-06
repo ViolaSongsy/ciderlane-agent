@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ciderlane Returns</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; max-width: 680px; margin: 2rem auto; padding: 0 1rem; }
+    #messages { list-style: none; padding: 0; min-height: 12rem; max-height: 50vh; overflow: auto; }
+    #messages li { padding: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .row { display: flex; gap: .5rem; }
+    input { flex: 1; min-width: 0; }
+    input, button { font: inherit; padding: .4rem; }
+    #approval { border: 1px solid #aaa; padding: 1rem; margin-bottom: 1rem; }
+    #status { min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Ciderlane Returns</h1>
+    <ol id="messages" aria-label="Chat messages" aria-live="polite"></ol>
+    <section id="approval" aria-label="Return approval" hidden>
+      <p>Approve or reject all of these returns:</p>
+      <ul id="proposals"></ul>
+      <button id="approve" type="button" disabled>Approve</button>
+      <button id="reject" type="button" disabled>Reject</button>
+    </section>
+    <form id="chat">
+      <label for="message">Message</label>
+      <div class="row">
+        <input id="message" type="text" autocomplete="off" required disabled>
+        <button id="send" type="submit" disabled>Send</button>
+      </div>
+    </form>
+    <p id="status" role="status">Starting chat…</p>
+  </main>
+  <script>
+    const messages = document.getElementById("messages");
+    const messageInput = document.getElementById("message");
+    const sendButton = document.getElementById("send");
+    const approvalPanel = document.getElementById("approval");
+    const proposals = document.getElementById("proposals");
+    const approveButton = document.getElementById("approve");
+    const rejectButton = document.getElementById("reject");
+    const status = document.getElementById("status");
+    let sessionId = null;
+    let approvalId = null;
+    let busy = false;
+
+    function updateControls() {
+      messageInput.disabled = sendButton.disabled = busy || !sessionId || approvalId !== null;
+      approveButton.disabled = rejectButton.disabled = busy || approvalId === null;
+      approvalPanel.hidden = approvalId === null;
+    }
+
+    function addMessage(speaker, text) {
+      const item = document.createElement("li");
+      item.textContent = `${speaker}: ${text}`;
+      messages.append(item);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function post(path, body) {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      if (!response.ok) {
+        let detail;
+        try { detail = (await response.json()).detail; } catch {}
+        const error = new Error(response.status === 404
+          ? "This session has ended. Reload the page to start a new chat."
+          : typeof detail === "string" ? detail : "Request failed. Please try again.");
+        error.status = response.status;
+        throw error;
+      }
+      return response.json();
+    }
+
+    function showResult(result) {
+      approvalId = null;
+      if (result.status === "approval_required") {
+        approvalId = result.approval_id;
+        proposals.replaceChildren();
+        for (const description of result.approvals) {
+          const item = document.createElement("li");
+          item.textContent = description;
+          proposals.append(item);
+        }
+        addMessage("Agent", "Please approve or reject the return requests below.");
+      } else {
+        addMessage("Agent", result.response);
+      }
+      status.textContent = "";
+    }
+
+    document.getElementById("chat").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = messageInput.value.trim();
+      if (!message || busy || !sessionId || approvalId !== null) return;
+      busy = true;
+      updateControls();
+      status.textContent = "Waiting for a reply…";
+      addMessage("You", message);
+      messageInput.value = "";
+      try {
+        showResult(await post(`/sessions/${sessionId}/chat`, { message }));
+      } catch (error) {
+        if (error.status === 404) sessionId = null;
+        status.textContent = error.message;
+      } finally {
+        busy = false;
+        updateControls();
+        if (!messageInput.disabled) messageInput.focus();
+      }
+    });
+
+    async function decide(decision) {
+      if (busy || approvalId === null) return;
+      busy = true;
+      updateControls();
+      status.textContent = "Waiting for a reply…";
+      addMessage("You", decision === "approve" ? "Approve these returns." : "Reject these returns.");
+      try {
+        showResult(await post(`/sessions/${sessionId}/approval`, {
+          approval_id: approvalId, decision,
+        }));
+      } catch (error) {
+        if (error.status === 404) sessionId = null;
+        if (error.status === 404 || error.status === 409) approvalId = null;
+        status.textContent = error.message;
+      } finally {
+        busy = false;
+        updateControls();
+        if (!messageInput.disabled) messageInput.focus();
+      }
+    }
+
+    approveButton.addEventListener("click", () => decide("approve"));
+    rejectButton.addEventListener("click", () => decide("reject"));
+
+    (async () => {
+      try {
+        sessionId = (await post("/sessions")).session_id;
+        status.textContent = "";
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        updateControls();
+        if (!messageInput.disabled) messageInput.focus();
+      }
+    })();
+  </script>
+</body>
+</html>

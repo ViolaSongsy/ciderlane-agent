@@ -1,12 +1,14 @@
 from asyncio import Lock
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
 from agents import Runner, RunResult, RunState
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.agent import ciderlane_agent
@@ -46,6 +48,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 sessions: dict[str, Session] = {}
+
+
+@app.get("/")
+async def index() -> FileResponse:
+    return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
 def validated_approvals(state: RunState, context: ReturnContext):
