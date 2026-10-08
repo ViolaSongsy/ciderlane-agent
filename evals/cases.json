@@ -687,7 +687,8 @@
               }
             }
           ]
-        }
+        },
+        "response_context": true
       },
       "requirements": [
         "AUTH-01",
@@ -875,6 +876,1713 @@
         "WRITE-01",
         "WRITE-02",
         "ESC-01"
+      ]
+    },
+    {
+      "id": "verified_order_then_missing_id_clarifies_order",
+      "description": "MANUAL-001: Clarify order scope before acting on a later request with an unavailable order ID.",
+      "messages": [
+        {
+          "content": "I want to return the white short dress from order CL1002.",
+          "approvals": [],
+          "expected": {
+            "return_rows": 0
+          }
+        },
+        {
+          "content": "My email is maya@example.com.",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "return_rows": 1
+          }
+        },
+        {
+          "content": "I want to return the floral short dress. My email is maya@example.com, but I cannot find or provide my order ID.",
+          "approvals": [],
+          "expected": {
+            "forbidden_tool_calls": [
+              "start_return",
+              "check_return_eligibility",
+              "request_human_support",
+              "begin_new_order_request"
+            ],
+            "return_delta": 0,
+            "support_rows": 0,
+            "response_requirements": [
+              "Ask the customer to confirm whether the floral short dress belongs to the already verified order CL1002.",
+              "Do not claim that a support case, return, or label was created for this new request."
+            ],
+            "response_context": true
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [],
+        "tool_sequence": [],
+        "return_rows": 1,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ],
+      "manual_case_id": "MANUAL-001"
+    },
+    {
+      "id": "different_order_missing_id_receives_support",
+      "description": "MANUAL-002: An earlier verified order must not block missing-credentials support for a different order.",
+      "messages": [
+        {
+          "content": "Can I return the white short dress from order CL1002? My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "return_rows": 0
+          }
+        },
+        {
+          "content": "I want to return the floral short dress. My email is maya@example.com, but I cannot find or provide my order ID.",
+          "approvals": [],
+          "expected": {
+            "forbidden_tool_calls": [
+              "start_return",
+              "check_return_eligibility",
+              "request_human_support",
+              "begin_new_order_request"
+            ],
+            "return_delta": 0,
+            "support_rows": 0,
+            "response_requirements": [
+              "Ask the customer to confirm whether the floral short dress belongs to the already verified order CL1002.",
+              "Do not claim that a support case, return, or label was created for this new request."
+            ],
+            "response_context": true
+          }
+        },
+        {
+          "content": "This dress is from a different order. My email is maya@example.com, but I cannot find or provide that order ID.",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [
+              "request_human_support"
+            ],
+            "forbidden_tool_calls": [
+              "start_return",
+              "check_return_eligibility"
+            ],
+            "return_delta": 0,
+            "support_rows": 1,
+            "support_row": {
+              "escalation_reason": "verification_failed",
+              "order_id": null,
+              "item_id": null,
+              "eligibility_decision": null
+            },
+            "response_requirements": [
+              "Confirm that a support case was created for human review and provide its ID.",
+              "Do not ask the customer to provide the unavailable order ID as a prerequisite for creating the support case."
+            ],
+            "human_review_required": true,
+            "response_context": true,
+            "tool_sequence": [
+              "request_human_support"
+            ],
+            "first_business_tool_call": "request_human_support"
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "request_human_support"
+        ],
+        "forbidden_tool_calls": [],
+        "tool_sequence": [],
+        "return_rows": 0,
+        "support_rows": 1,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ],
+      "manual_case_id": "MANUAL-002"
+    },
+    {
+      "id": "created_return_then_eligibility_inquiry",
+      "description": "MANUAL-003: A read-only inquiry after creation must acknowledge the persisted return.",
+      "messages": [
+        {
+          "content": "I want to return the white short dress from order CL1002. My email is maya@example.com.",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "return_rows": 1
+          }
+        },
+        {
+          "content": "Can I return the white short dress from that order?",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [
+              "check_return_eligibility"
+            ],
+            "forbidden_tool_calls": [
+              "start_return"
+            ],
+            "return_rows": 1,
+            "return_delta": 0,
+            "existing_label_in_response": true,
+            "response_requirements": [
+              "Explain that a return already exists for the white short dress.",
+              "Do not imply that a new return still needs to be started or that a second return was created."
+            ],
+            "response_context": true,
+            "tool_expectations": {
+              "check_return_eligibility": [
+                {
+                  "arguments": {
+                    "item_id": "it00004",
+                    "reason": null
+                  },
+                  "output": {
+                    "status": "return_already_exists",
+                    "order_id": "CL1002",
+                    "item_id": "it00004"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return",
+          "check_return_eligibility"
+        ],
+        "forbidden_tool_calls": [],
+        "tool_sequence": [],
+        "return_rows": 1,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ],
+      "manual_case_id": "MANUAL-003"
+    },
+    {
+      "id": "rejected_return_then_pronoun_retry",
+      "description": "MANUAL-004: A renewed request using \"it\" must receive a fresh approval after rejection.",
+      "messages": [
+        {
+          "content": "I want to return the white short dress from order CL1002.",
+          "approvals": [],
+          "expected": {
+            "return_rows": 0
+          }
+        },
+        {
+          "content": "My email is maya@example.com.",
+          "approvals": [
+            "reject"
+          ],
+          "expected": {
+            "return_rows": 0,
+            "return_delta": 0,
+            "response_requirements": [
+              "Explain that no return or label was created because approval was declined."
+            ]
+          }
+        },
+        {
+          "content": "sorry actually return it",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "return_rows": 1,
+            "tool_expectations": {
+              "start_return": [
+                {
+                  "arguments": {
+                    "item_id": "it00004",
+                    "reason": null
+                  },
+                  "output": {
+                    "status": "return_created"
+                  }
+                }
+              ]
+            },
+            "response_requirements": [
+              "Confirm that the white short dress return and label were created.",
+              "Provide the return-label URL."
+            ],
+            "response_context": true
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [],
+        "tool_sequence": [],
+        "return_rows": 1,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ],
+      "manual_case_id": "MANUAL-004"
+    },
+    {
+      "id": "rejected_return_then_explicit_retry",
+      "description": "MANUAL-004: Repeating a complete return request after rejection must receive a fresh approval.",
+      "messages": [
+        {
+          "content": "I want to return the white short dress from order CL1002.",
+          "approvals": [],
+          "expected": {
+            "return_rows": 0
+          }
+        },
+        {
+          "content": "My email is maya@example.com.",
+          "approvals": [
+            "reject"
+          ],
+          "expected": {
+            "return_rows": 0,
+            "return_delta": 0,
+            "response_requirements": [
+              "Explain that no return or label was created because approval was declined."
+            ]
+          }
+        },
+        {
+          "content": "Please return the white short dress from order CL1002. My email is maya@example.com.",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "return_rows": 1,
+            "tool_expectations": {
+              "start_return": [
+                {
+                  "arguments": {
+                    "item_id": "it00004",
+                    "reason": null
+                  },
+                  "output": {
+                    "status": "return_created"
+                  }
+                }
+              ]
+            },
+            "response_requirements": [
+              "Confirm that the white short dress return and label were created.",
+              "Provide the return-label URL."
+            ],
+            "response_context": true
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [],
+        "tool_sequence": [],
+        "return_rows": 1,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ],
+      "manual_case_id": "MANUAL-004"
+    },
+    {
+      "id": "different_invalid_order_verifies_before_item_selection",
+      "description": "MANUAL-005: After rejecting a verified return, verify CL9999 in the switching turn before asking for an item.",
+      "messages": [
+        {
+          "content": "I want to return the white short dress from order CL1002. My email is maya@example.com.",
+          "approvals": [
+            "reject"
+          ],
+          "expected": {
+            "return_rows": 0,
+            "return_delta": 0
+          }
+        },
+        {
+          "content": "I want to return an item from a different order, CL9999. My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [
+              "verify_order"
+            ],
+            "forbidden_tool_calls": [
+              "start_return",
+              "check_return_eligibility",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL9999",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": false
+                  }
+                }
+              ]
+            },
+            "return_delta": 0,
+            "response_requirements": [
+              "Explain that the order could not be verified and ask the customer to check the order ID and email.",
+              "Do not ask which item to return before successful order verification.",
+              "Do not reveal or invent contents of CL9999."
+            ],
+            "tool_sequence": [
+              "verify_order"
+            ],
+            "first_business_tool_call": "verify_order"
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order"
+        ],
+        "forbidden_tool_calls": [],
+        "tool_sequence": [],
+        "return_rows": 0,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ],
+      "manual_case_id": "MANUAL-005"
+    },
+    {
+      "id": "same_verified_order_missing_id_allows_return",
+      "description": "Control: Explicitly referring to the same verified order does not require recovering its ID.",
+      "messages": [
+        {
+          "content": "Can I return the white short dress from order CL1002? My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "return_rows": 0
+          }
+        },
+        {
+          "content": "Please return the floral short dress from that same order. My email is maya@example.com, but I cannot find my order ID.",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "forbidden_tool_calls": [
+              "request_human_support"
+            ],
+            "return_rows": 1,
+            "tool_expectations": {
+              "start_return": [
+                {
+                  "arguments": {
+                    "item_id": "it00005",
+                    "reason": null
+                  },
+                  "output": {
+                    "status": "return_created"
+                  }
+                }
+              ]
+            },
+            "response_requirements": [
+              "Confirm that the floral short dress return and label were created.",
+              "Do not require the customer to recover the already verified order ID."
+            ],
+            "response_context": true
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [
+          "request_human_support"
+        ],
+        "tool_sequence": [],
+        "return_rows": 1,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ]
+    },
+    {
+      "id": "rejected_return_then_thanks_stays_cancelled",
+      "description": "Control: A polite acknowledgement after rejection is not permission to retry the return.",
+      "messages": [
+        {
+          "content": "I want to return the white short dress from order CL1002. My email is maya@example.com.",
+          "approvals": [
+            "reject"
+          ],
+          "expected": {
+            "return_rows": 0,
+            "return_delta": 0,
+            "response_requirements": [
+              "Explain that no return or label was created because approval was declined."
+            ]
+          }
+        },
+        {
+          "content": "Thanks.",
+          "approvals": [],
+          "expected": {
+            "forbidden_tool_calls": [
+              "start_return"
+            ],
+            "return_rows": 0,
+            "return_delta": 0,
+            "response_requirements": [
+              "Do not claim that a return or label was created or that a new return request was submitted."
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [],
+        "tool_sequence": [],
+        "return_rows": 0,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ]
+    },
+    {
+      "id": "different_order_waits_for_its_email",
+      "description": "A new order cannot borrow the previous order's email; later supplied credentials allow verification.",
+      "messages": [
+        {
+          "content": "Can I return the white short dress from order CL1002? My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "forbidden_tool_calls": [
+              "start_return",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1002",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1002"
+                  }
+                }
+              ],
+              "check_return_eligibility": [
+                {
+                  "arguments": {
+                    "item_id": "it00004",
+                    "reason": null
+                  },
+                  "output": {
+                    "decision": "standard_return"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "support_rows": 0,
+            "return_delta": 0,
+            "first_tool_call": "verify_order"
+          }
+        },
+        {
+          "content": "I want to return the floral long dress from a different order, CL1001.",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [],
+            "forbidden_tool_calls": [
+              "verify_order",
+              "check_return_eligibility",
+              "start_return",
+              "request_human_support"
+            ],
+            "return_rows": 0,
+            "return_delta": 0,
+            "response_requirements": [
+              "Ask for the checkout email for this order.",
+              "Do not claim that CL1001 is verified or disclose its contents."
+            ]
+          }
+        },
+        {
+          "content": "My email for CL1001 is maya@example.com.",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "required_tool_calls": [
+              "verify_order",
+              "start_return"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "start_return"
+            ],
+            "forbidden_tool_calls": [
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1001",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1001"
+                  }
+                }
+              ],
+              "start_return": [
+                {
+                  "arguments": {
+                    "item_id": "it00001",
+                    "reason": null
+                  },
+                  "output": {
+                    "status": "return_not_created",
+                    "decision": "blocked"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "return_delta": 0,
+            "response_requirements": [
+              "Explain that the item is outside the 30-day return window.",
+              "Do not claim that a return or label was created."
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [
+          "request_human_support"
+        ],
+        "tool_sequence": [],
+        "return_rows": 0,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ]
+    },
+    {
+      "id": "different_order_missing_id_then_verified_return",
+      "description": "Verification support for a different unknown order does not prevent later supplied credentials from authorizing its return.",
+      "messages": [
+        {
+          "content": "Can I return the floral long dress from order CL1001? My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "forbidden_tool_calls": [
+              "start_return",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1001",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1001"
+                  }
+                }
+              ],
+              "check_return_eligibility": [
+                {
+                  "arguments": {
+                    "item_id": "it00001",
+                    "reason": null
+                  },
+                  "output": {
+                    "decision": "blocked"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "support_rows": 0,
+            "return_delta": 0,
+            "first_tool_call": "verify_order"
+          }
+        },
+        {
+          "content": "I want to return the floral short dress from a different order. My email is maya@example.com, but I cannot find that order ID.",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [
+              "request_human_support"
+            ],
+            "tool_sequence": [
+              "request_human_support"
+            ],
+            "forbidden_tool_calls": [
+              "verify_order",
+              "check_return_eligibility",
+              "start_return"
+            ],
+            "tool_expectations": {
+              "request_human_support": [
+                {
+                  "arguments": {
+                    "escalation_reason": "verification_failed"
+                  },
+                  "output": {
+                    "status": "case_created"
+                  }
+                }
+              ]
+            },
+            "support_rows": 1,
+            "support_row": {
+              "order_id": null,
+              "item_id": null,
+              "eligibility_decision": null
+            },
+            "return_rows": 0,
+            "return_delta": 0,
+            "human_review_required": true,
+            "response_requirements": [
+              "Confirm that a support case was created for human review and provide its ID."
+            ],
+            "first_business_tool_call": "request_human_support"
+          }
+        },
+        {
+          "content": "I found the order ID for that floral short dress: CL1002. My email is maya@example.com.",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "required_tool_calls": [
+              "verify_order",
+              "start_return"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "start_return"
+            ],
+            "forbidden_tool_calls": [
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1002",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1002"
+                  }
+                }
+              ],
+              "start_return": [
+                {
+                  "arguments": {
+                    "item_id": "it00005",
+                    "reason": null
+                  },
+                  "output": {
+                    "status": "return_created",
+                    "order_id": "CL1002",
+                    "item_id": "it00005"
+                  }
+                }
+              ]
+            },
+            "return_rows": 1,
+            "return_delta": 1,
+            "support_rows": 1,
+            "existing_label_in_response": true,
+            "response_requirements": [
+              "Confirm that the floral short dress return and label were created."
+            ],
+            "response_context": true
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "request_human_support",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [],
+        "tool_sequence": [],
+        "return_rows": 1,
+        "support_rows": 1,
+        "support_row": {
+          "order_id": null,
+          "item_id": null,
+          "eligibility_decision": null
+        },
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "POLICY-01",
+        "WRITE-01",
+        "WRITE-02",
+        "ESC-01"
+      ]
+    },
+    {
+      "id": "switch_orders_and_return_to_previous_requires_verification",
+      "description": "Switching between known orders, including returning to the first, requires fresh verification each time.",
+      "messages": [
+        {
+          "content": "Can I return the white short dress from order CL1002? My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "forbidden_tool_calls": [
+              "start_return",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1002",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1002"
+                  }
+                }
+              ],
+              "check_return_eligibility": [
+                {
+                  "arguments": {
+                    "item_id": "it00004",
+                    "reason": null
+                  },
+                  "output": {
+                    "decision": "standard_return"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "support_rows": 0,
+            "return_delta": 0,
+            "first_tool_call": "verify_order"
+          }
+        },
+        {
+          "content": "Can I return the floral long dress from a different order, CL1001? My email for CL1001 is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "forbidden_tool_calls": [
+              "start_return",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1001",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1001"
+                  }
+                }
+              ],
+              "check_return_eligibility": [
+                {
+                  "arguments": {
+                    "item_id": "it00001",
+                    "reason": null
+                  },
+                  "output": {
+                    "decision": "blocked"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "support_rows": 0,
+            "return_delta": 0,
+            "first_business_tool_call": "verify_order"
+          }
+        },
+        {
+          "content": "Back to order CL1002: can I return the white short dress? My email for CL1002 is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "required_tool_calls": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "forbidden_tool_calls": [
+              "start_return",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1002",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1002"
+                  }
+                }
+              ],
+              "check_return_eligibility": [
+                {
+                  "arguments": {
+                    "item_id": "it00004",
+                    "reason": null
+                  },
+                  "output": {
+                    "decision": "standard_return"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "support_rows": 0,
+            "return_delta": 0,
+            "first_business_tool_call": "verify_order"
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "check_return_eligibility"
+        ],
+        "forbidden_tool_calls": [
+          "start_return",
+          "request_human_support"
+        ],
+        "tool_sequence": [],
+        "return_rows": 0,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "POLICY-01",
+        "INTENT-01"
+      ]
+    },
+    {
+      "id": "corrected_verification_credentials_continue_return",
+      "description": "A corrected order ID after failed verification preserves the pending return intent and selected product.",
+      "messages": [
+        {
+          "content": "I want to return the white short dress from order CL9999. My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "response_context": true,
+            "required_tool_calls": [
+              "verify_order"
+            ],
+            "forbidden_tool_calls": [
+              "check_return_eligibility",
+              "start_return",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL9999",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": false
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 0,
+            "response_requirements": [
+              "Explain that the order could not be verified and ask the customer to check the order ID and email.",
+              "Do not ask which item to return before successful order verification.",
+              "Do not claim that a support case, return, or label was created."
+            ],
+            "first_tool_call": "verify_order"
+          }
+        },
+        {
+          "content": "Sorry, I mistyped the order ID. It is CL1002. My email is maya@example.com.",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "response_context": true,
+            "required_tool_calls": [
+              "verify_order",
+              "start_return"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "start_return"
+            ],
+            "forbidden_tool_calls": [
+              "check_return_eligibility",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1002",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1002"
+                  }
+                }
+              ],
+              "start_return": [
+                {
+                  "arguments": {
+                    "item_id": "it00004",
+                    "reason": null
+                  },
+                  "output": {
+                    "status": "return_created",
+                    "decision": "standard_return",
+                    "order_id": "CL1002",
+                    "item_id": "it00004"
+                  }
+                }
+              ]
+            },
+            "return_rows": 1,
+            "return_delta": 1,
+            "support_rows": 0,
+            "existing_label_in_response": true,
+            "human_review_required": false,
+            "response_requirements": [
+              "Confirm that the white short dress return and label were created.",
+              "Remind the customer that the item must be unworn, unwashed, and have its tags attached."
+            ],
+            "first_business_tool_call": "verify_order"
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [
+          "check_return_eligibility",
+          "request_human_support"
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "verify_order",
+          "start_return"
+        ],
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL9999",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": false
+              }
+            },
+            {
+              "arguments": {
+                "order_id": "CL1002",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true,
+                "order_id": "CL1002"
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00004",
+                "reason": null
+              },
+              "output": {
+                "status": "return_created",
+                "decision": "standard_return",
+                "order_id": "CL1002",
+                "item_id": "it00004"
+              }
+            }
+          ]
+        },
+        "return_rows": 1,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02",
+        "POLICY-01"
+      ]
+    },
+    {
+      "id": "pending_return_changed_to_eligibility_is_read_only",
+      "description": "An explicit eligibility-only instruction supersedes a pending return request before credentials complete verification.",
+      "messages": [
+        {
+          "content": "I want to return the white short dress from order CL1002.",
+          "approvals": [],
+          "expected": {
+            "response_context": true,
+            "forbidden_tool_calls": [
+              "verify_order",
+              "check_return_eligibility",
+              "start_return",
+              "request_human_support"
+            ],
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 0,
+            "response_requirements": [
+              "Ask for the email address associated with order CL1002.",
+              "Do not claim that the order is verified or that a return or label was created."
+            ]
+          }
+        },
+        {
+          "content": "Actually, only check whether it is eligible; do not start a return. My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "response_context": true,
+            "required_tool_calls": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "check_return_eligibility"
+            ],
+            "forbidden_tool_calls": [
+              "start_return",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1002",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1002"
+                  }
+                }
+              ],
+              "check_return_eligibility": [
+                {
+                  "arguments": {
+                    "item_id": "it00004",
+                    "reason": null
+                  },
+                  "output": {
+                    "decision": "standard_return"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 0,
+            "human_review_required": false,
+            "response_requirements": [
+              "Confirm that the white short dress is eligible for return.",
+              "Remind the customer that the item must be unworn, unwashed, and have its tags attached.",
+              "Do not claim that a return or label was created or that return approval is required."
+            ],
+            "first_tool_call": "verify_order"
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "check_return_eligibility"
+        ],
+        "forbidden_tool_calls": [
+          "start_return",
+          "request_human_support"
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "check_return_eligibility"
+        ],
+        "return_rows": 0,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "POLICY-01",
+        "INTENT-01"
+      ]
+    },
+    {
+      "id": "verification_support_thanks_then_credentials_continue_return",
+      "description": "A polite acknowledgement after missing-ID support preserves unresolved return intent for a later credentials-only follow-up.",
+      "messages": [
+        {
+          "content": "I want to return the floral short dress. My email is maya@example.com, but I cannot find or provide my order ID.",
+          "approvals": [],
+          "expected": {
+            "response_context": true,
+            "required_tool_calls": [
+              "request_human_support"
+            ],
+            "forbidden_tool_calls": [
+              "verify_order",
+              "check_return_eligibility",
+              "start_return"
+            ],
+            "tool_expectations": {
+              "request_human_support": [
+                {
+                  "arguments": {
+                    "escalation_reason": "verification_failed"
+                  },
+                  "output": {
+                    "status": "case_created",
+                    "escalation_reason": "verification_failed"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 1,
+            "support_row": {
+              "escalation_reason": "verification_failed",
+              "order_id": null,
+              "item_id": null,
+              "eligibility_decision": null
+            },
+            "human_review_required": true,
+            "response_requirements": [
+              "Confirm that human support review is required and a support case was created; provide its ID.",
+              "Do not require the unavailable order ID as a prerequisite for creating the support case.",
+              "Do not claim that a return or label was created."
+            ],
+            "first_tool_call": "request_human_support"
+          }
+        },
+        {
+          "content": "Thanks.",
+          "approvals": [],
+          "expected": {
+            "response_context": true,
+            "forbidden_tool_calls": [
+              "verify_order",
+              "check_return_eligibility",
+              "start_return",
+              "request_human_support"
+            ],
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 1,
+            "support_row": {
+              "escalation_reason": "verification_failed",
+              "order_id": null,
+              "item_id": null,
+              "eligibility_decision": null
+            },
+            "response_requirements": [
+              "Do not claim that a new support case, return, or label was created."
+            ]
+          }
+        },
+        {
+          "content": "I found it: CL1002. My email is maya@example.com.",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "response_context": true,
+            "required_tool_calls": [
+              "verify_order",
+              "start_return"
+            ],
+            "tool_sequence": [
+              "verify_order",
+              "start_return"
+            ],
+            "forbidden_tool_calls": [
+              "check_return_eligibility",
+              "request_human_support"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1002",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1002"
+                  }
+                }
+              ],
+              "start_return": [
+                {
+                  "arguments": {
+                    "item_id": "it00005",
+                    "reason": null
+                  },
+                  "output": {
+                    "status": "return_created",
+                    "decision": "standard_return",
+                    "order_id": "CL1002",
+                    "item_id": "it00005"
+                  }
+                }
+              ]
+            },
+            "return_rows": 1,
+            "return_delta": 1,
+            "support_rows": 1,
+            "support_row": {
+              "escalation_reason": "verification_failed",
+              "order_id": null,
+              "item_id": null,
+              "eligibility_decision": null
+            },
+            "existing_label_in_response": true,
+            "human_review_required": false,
+            "response_requirements": [
+              "Confirm that the floral short dress return and label were created.",
+              "Remind the customer that the item must be unworn, unwashed, and have its tags attached.",
+              "Do not say that human review is still required for this return."
+            ],
+            "first_tool_call": "verify_order"
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "request_human_support",
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [
+          "check_return_eligibility"
+        ],
+        "tool_sequence": [
+          "request_human_support",
+          "verify_order",
+          "start_return"
+        ],
+        "tool_expectations": {
+          "request_human_support": [
+            {
+              "arguments": {
+                "escalation_reason": "verification_failed"
+              },
+              "output": {
+                "status": "case_created",
+                "escalation_reason": "verification_failed"
+              }
+            }
+          ],
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1002",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true,
+                "order_id": "CL1002"
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00005",
+                "reason": null
+              },
+              "output": {
+                "status": "return_created",
+                "decision": "standard_return",
+                "order_id": "CL1002",
+                "item_id": "it00005"
+              }
+            }
+          ]
+        },
+        "return_rows": 1,
+        "support_rows": 1,
+        "support_row": {
+          "escalation_reason": "verification_failed",
+          "order_id": null,
+          "item_id": null,
+          "eligibility_decision": null
+        },
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02",
+        "ESC-01"
+      ]
+    },
+    {
+      "id": "cancelled_pending_return_credentials_do_not_resume",
+      "description": "An explicit cancellation clears pending return intent so a later email-only message cannot restart verification or request approval.",
+      "messages": [
+        {
+          "content": "I want to return the white short dress from order CL1002.",
+          "approvals": [],
+          "expected": {
+            "response_context": true,
+            "forbidden_tool_calls": [
+              "verify_order",
+              "check_return_eligibility",
+              "start_return",
+              "request_human_support"
+            ],
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 0,
+            "response_requirements": [
+              "Ask for the email address associated with order CL1002.",
+              "Do not claim that the order is verified or that a return or label was created."
+            ]
+          }
+        },
+        {
+          "content": "Actually, cancel that return request. I do not want to return it.",
+          "approvals": [],
+          "expected": {
+            "response_context": true,
+            "forbidden_tool_calls": [
+              "verify_order",
+              "check_return_eligibility",
+              "start_return",
+              "request_human_support"
+            ],
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 0,
+            "human_review_required": false,
+            "response_requirements": [
+              "Acknowledge that the return request was cancelled.",
+              "Do not claim that a return or label was created or ask for return approval."
+            ]
+          }
+        },
+        {
+          "content": "My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "response_context": true,
+            "forbidden_tool_calls": [
+              "verify_order",
+              "check_return_eligibility",
+              "start_return",
+              "request_human_support"
+            ],
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 0,
+            "human_review_required": false,
+            "response_requirements": [
+              "Do not claim that the cancelled return was restarted, submitted, or created.",
+              "Do not request return approval or claim that a label or support case was created."
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [],
+        "tool_sequence": [],
+        "forbidden_tool_calls": [
+          "verify_order",
+          "check_return_eligibility",
+          "start_return",
+          "request_human_support"
+        ],
+        "return_rows": 0,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
+      ]
+    },
+    {
+      "id": "single_item_mismatch_clarifies_before_return",
+      "description": "An explicit product that does not match a single-item verified order requires clarification; correcting it retains verification and resumes the pending return with fresh approval.",
+      "messages": [
+        {
+          "content": "Please return the white short dress from order CL1001. My email is maya@example.com.",
+          "approvals": [],
+          "expected": {
+            "response_context": true,
+            "required_tool_calls": [
+              "verify_order"
+            ],
+            "forbidden_tool_calls": [
+              "check_return_eligibility",
+              "start_return",
+              "request_human_support"
+            ],
+            "tool_sequence": [
+              "verify_order"
+            ],
+            "tool_expectations": {
+              "verify_order": [
+                {
+                  "arguments": {
+                    "order_id": "CL1001",
+                    "email": "maya@example.com"
+                  },
+                  "output": {
+                    "verified": true,
+                    "order_id": "CL1001"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 0,
+            "human_review_required": false,
+            "response_requirements": [
+              "Ask the customer to clarify or confirm the floral long dress as the item to return.",
+              "Do not claim that the white short dress belongs to order CL1001.",
+              "Do not state return eligibility or request return approval before resolving the product mismatch.",
+              "Do not claim that a return, label, or support case was created."
+            ],
+            "first_tool_call": "verify_order"
+          }
+        },
+        {
+          "content": "I meant the floral long dress.",
+          "approvals": [
+            "approve"
+          ],
+          "expected": {
+            "response_context": true,
+            "required_tool_calls": [
+              "start_return"
+            ],
+            "forbidden_tool_calls": [
+              "verify_order",
+              "check_return_eligibility",
+              "request_human_support"
+            ],
+            "tool_sequence": [
+              "start_return"
+            ],
+            "tool_expectations": {
+              "start_return": [
+                {
+                  "arguments": {
+                    "item_id": "it00001",
+                    "reason": null
+                  },
+                  "output": {
+                    "status": "return_not_created",
+                    "decision": "blocked"
+                  }
+                }
+              ]
+            },
+            "return_rows": 0,
+            "return_delta": 0,
+            "support_rows": 0,
+            "human_review_required": false,
+            "response_requirements": [
+              "Explain that the floral long dress is outside the 30-day return window and cannot be returned.",
+              "Do not claim that a return, label, or support case was created.",
+              "Do not say that human review is required."
+            ],
+            "first_tool_call": "start_return"
+          }
+        }
+      ],
+      "expected": {
+        "required_tool_calls": [
+          "verify_order",
+          "start_return"
+        ],
+        "forbidden_tool_calls": [
+          "check_return_eligibility",
+          "request_human_support"
+        ],
+        "tool_sequence": [
+          "verify_order",
+          "start_return"
+        ],
+        "tool_expectations": {
+          "verify_order": [
+            {
+              "arguments": {
+                "order_id": "CL1001",
+                "email": "maya@example.com"
+              },
+              "output": {
+                "verified": true,
+                "order_id": "CL1001"
+              }
+            }
+          ],
+          "start_return": [
+            {
+              "arguments": {
+                "item_id": "it00001",
+                "reason": null
+              },
+              "output": {
+                "status": "return_not_created",
+                "decision": "blocked"
+              }
+            }
+          ]
+        },
+        "return_rows": 0,
+        "support_rows": 0,
+        "response_requirements": []
+      },
+      "requirements": [
+        "AUTH-01",
+        "WRITE-01",
+        "WRITE-02"
       ]
     }
   ]

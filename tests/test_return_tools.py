@@ -1,6 +1,8 @@
 import os
+import tempfile
 import unittest
 from datetime import date, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from src.context import ReturnContext
@@ -23,9 +25,11 @@ def verified_context(order_id):
 
 class TestReturnPolicy(unittest.TestCase):
     def test_reference_date_override(self):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
         with patch.dict(
             os.environ,
-            {"CIDERLANE_REFERENCE_DATE": "2026-08-31"},
+            {"CIDERLANE_REFERENCE_DATE": "2026-08-31",
+             "CIDERLANE_DATABASE_PATH": str(Path(directory) / "policy.db")},
         ):
             result = check_return_eligibility(
                 "it00004",

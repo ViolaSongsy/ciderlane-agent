@@ -169,7 +169,7 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(self.rows(), [])
         self.assertEqual(self.rows("return_label_requests"), [])
         self.assertIsNone(self.session.paused_state)
-        self.assertTrue(any("The customer declined this return" in str(item)
+        self.assertTrue(any("This return approval was rejected" in str(item)
                             for item in self.session.conversation))
 
     def test_retrying_approval_does_not_duplicate_business_side_effects(self):

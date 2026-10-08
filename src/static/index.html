@@ -157,7 +157,7 @@
       <div class="chat-footer">
         <section id="approval" aria-label="Return approval" hidden>
           <h3>Review your return</h3>
-          <p>Approve or reject all of these returns:</p>
+          <p>Approve or reject this return:</p>
           <ul id="proposals"></ul>
           <div class="approval-actions">
             <button id="approve" type="button" disabled>Approve</button>
@@ -236,7 +236,7 @@
           item.textContent = description;
           proposals.append(item);
         }
-        addMessage("Agent", "Please approve or reject the return requests below.");
+        addMessage("Agent", "Please approve or reject this return request.");
       } else {
         addMessage("Agent", result.response);
       }
@@ -269,7 +269,7 @@
       busy = true;
       updateControls();
       status.textContent = "Waiting for a reply…";
-      addMessage("You", decision === "approve" ? "Approve these returns." : "Reject these returns.");
+      addMessage("You", decision === "approve" ? "Approve this return." : "Reject this return.");
       try {
         showResult(await post(`/sessions/${sessionId}/approval`, {
           approval_id: approvalId, decision,

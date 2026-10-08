@@ -2,6 +2,7 @@ import json
 import os
 import unittest
 import tempfile
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,11 +10,14 @@ from agents import RunContextWrapper
 from agents.tool_context import ToolContext
 
 from src.agent_tools import (
+    begin_new_order_request_tool,
     check_return_eligibility_tool,
+    request_human_support_tool,
     start_return_tool,
     verify_order_tool,
 )
 from src.context import ReturnContext
+from src.storage import connect_database
 from src.tools.return_tools import start_return
 
 
@@ -135,12 +139,64 @@ class TestVerificationContext(unittest.IsolatedAsyncioTestCase):
             "return_created",
         )
 
+    async def test_order_switch_keeps_saved_return_but_revokes_old_order_access(self):
+        await self.verify()
+        created = await self.create_label()
+        self.assertEqual(created["status"], "return_created")
+        await self.invoke(check_return_eligibility_tool, self.ctx,
+                          {"item_id": "it00003", "reason": None})
+        self.assertIsNotNone(self.ctx.context.current_evaluation)
+        conversation_id = self.ctx.context.conversation_id
+        with closing(connect_database()) as connection:
+            saved = dict(connection.execute("SELECT * FROM returns").fetchone())
+
+        await self.invoke(begin_new_order_request_tool, self.ctx, {})
+
+        self.assertIsNone(self.ctx.context.verified_order_id)
+        self.assertIsNone(self.ctx.context.current_evaluation)
+        self.assertEqual(self.ctx.context.conversation_id, conversation_id)
+        self.provider_factory.reset_mock()
+        self.assert_not_verified(await self.create_label())
+        with closing(connect_database()) as connection:
+            self.assertEqual([dict(row) for row in connection.execute("SELECT * FROM returns")],
+                             [saved])
+
+    async def test_order_switch_allows_unverified_support_then_real_new_order_verification(self):
+        await self.verify(order_id="CL1001")
+        await self.invoke(check_return_eligibility_tool, self.ctx,
+                          {"item_id": "it00001", "reason": None})
+        await self.invoke(begin_new_order_request_tool, self.ctx, {})
+
+        support = await self.invoke(request_human_support_tool, self.ctx, {
+            "escalation_reason": "verification_failed",
+            "summary": "Customer requests a return from a different order but cannot provide its ID.",
+        })
+
+        self.assertEqual(support["status"], "case_created")
+        with closing(connect_database()) as connection:
+            saved_case = connection.execute("SELECT * FROM support_cases WHERE case_id = ?",
+                                            (support["case_id"],)).fetchone()
+            self.assertEqual(saved_case["conversation_id"], self.ctx.context.conversation_id)
+            for field in ("order_id", "item_id", "eligibility_decision"):
+                self.assertIsNone(saved_case[field])
+            self.assertEqual(connection.execute("SELECT count(*) FROM returns").fetchone()[0], 0)
+        self.assert_not_verified(await self.create_label())
+
+        verified = await self.verify(order_id="CL1002")
+        self.assertTrue(verified["verified"])
+        created = await self.create_label()
+        self.assertEqual(created["status"], "return_created")
+        self.assertEqual(created["order_id"], "CL1002")
+        self.provider_factory.return_value.create_label.assert_called_once()
+
     def test_internal_label_function_fails_closed_without_context(self):
         self.assert_not_verified(
             start_return("it00004")
         )
 
     def test_model_cannot_supply_verification_state(self):
+        self.assertEqual(begin_new_order_request_tool.params_json_schema["properties"], {})
+        self.assertFalse(begin_new_order_request_tool.params_json_schema["additionalProperties"])
         self.assertEqual(
             set(verify_order_tool.params_json_schema["properties"]),
             {"order_id", "email"},

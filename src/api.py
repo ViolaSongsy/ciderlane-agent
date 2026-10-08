@@ -133,9 +133,8 @@ async def resolve_approval(session_id: str, request: ApprovalRequest) -> dict:
             else:
                 state.reject(
                     interruption,
-                    rejection_message=("The customer declined this return. Do not call "
-                                       "start_return again for this request. Explain that "
-                                       "no return or label was created."),
+                    rejection_message=("This return approval was rejected. "
+                                       "No return or label was created."),
                 )
         result = await Runner.run(ciderlane_agent, state)
         return await finish_run(session, result)

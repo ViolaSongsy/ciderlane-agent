@@ -152,6 +152,7 @@ class TestApproval(unittest.TestCase):
         self.assertEqual(resumed.final_output, 'Done.')
         self.assertEqual(self.rows(), [])
         self.provider_factory.assert_not_called()
+        self.assertIn("This return approval was rejected", str(resumed.to_input_list()))
 
     def test_unresolved_item_is_rejected_without_prompt_or_write(self):
         for order_id, item_id in (('CL1002', 'missing'), ('CL1001', 'it00004'),

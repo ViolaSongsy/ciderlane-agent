@@ -249,7 +249,8 @@ class TestStartReturn(unittest.IsolatedAsyncioTestCase):
 
     async def test_schema_and_forged_state_cannot_authorize_write(self):
         self.assertEqual({tool.name for tool in ciderlane_agent.tools}, {
-            'verify_order', 'check_return_eligibility', 'start_return', 'request_human_support'})
+            'begin_new_order_request', 'verify_order', 'check_return_eligibility',
+            'start_return', 'request_human_support'})
         schema = start_return_tool.params_json_schema
         self.assertEqual(set(schema['properties']), {'item_id', 'reason'})
         self.assertFalse(schema['additionalProperties'])

@@ -1,7 +1,10 @@
 import json
 import os
+import tempfile
 import unittest
+from contextlib import closing
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 from unittest.mock import patch
 
 from agents import RunContextWrapper
@@ -11,13 +14,17 @@ from src.agent_tools import check_return_eligibility_tool, verify_order_tool
 from src.context import ReturnContext, ReturnEvaluation
 from src.tools.order_tools import load_orders
 from src.tools.return_tools import check_return_eligibility
+from src.storage import connect_database, initialize_database, reserve_return_label_request
+from src.tools.return_tools import start_return
 
 
 class TestTrustedEligibilityLookup(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
         date_patch = patch.dict(
             os.environ,
-            {"CIDERLANE_REFERENCE_DATE": "2026-08-31"},
+            {"CIDERLANE_REFERENCE_DATE": "2026-08-31",
+             "CIDERLANE_DATABASE_PATH": str(Path(directory) / "eligibility.db")},
         )
         date_patch.start()
         self.addCleanup(date_patch.stop)
@@ -313,3 +320,85 @@ class TestTrustedEligibilityLookup(unittest.IsolatedAsyncioTestCase):
         # Strict SDK schemas require both keys; reason remains nullable and
         # defaults to None when omitted from a direct invocation.
         self.assertEqual(set(schema["required"]), {"item_id", "reason"})
+
+    def create_return(self):
+        with patch("src.tools.return_tools.get_return_label_provider") as provider:
+            provider.return_value.create_label.return_value = "https://carrier.example.test/original.pdf"
+            created = start_return("it00004", context=ReturnContext(verified_order_id="CL1002"))
+        self.assertEqual(created["status"], "return_created")
+        return created
+
+    async def test_existing_return_is_read_from_storage_without_policy_or_writes(self):
+        created = self.create_return()
+        await self.verify()
+        self.ctx.context.current_evaluation = ReturnEvaluation("CL1002", "it00002", "blocked", ())
+        path = Path(os.environ["CIDERLANE_DATABASE_PATH"])
+        before = path.read_bytes()
+        # The saved return remains authoritative even if the window has since expired.
+        with patch.dict(os.environ, {"CIDERLANE_REFERENCE_DATE": "2027-01-01"}), \
+                patch("src.tools.return_tools.evaluate_return_policy") as policy, \
+                patch("src.tools.return_tools.get_return_label_provider") as provider:
+            result = await self.invoke(check_return_eligibility_tool, {"item_id": "it00004"})
+        self.assertEqual(result, {"status": "return_already_exists", **{
+            key: created[key] for key in ("return_id", "order_id", "item_id", "label_url", "created_at")}})
+        self.assertNotIn("decision", result)
+        self.assertIsNone(self.ctx.context.current_evaluation)
+        self.assertEqual(path.read_bytes(), before)
+        policy.assert_not_called()
+        provider.assert_not_called()
+
+    async def test_fresh_database_query_does_not_create_a_file(self):
+        await self.verify()
+        path = Path(os.environ["CIDERLANE_DATABASE_PATH"])
+        self.assertFalse(path.exists())
+        result = await self.invoke(check_return_eligibility_tool, {"item_id": "it00004"})
+        self.assertEqual(result["decision"], "standard_return")
+        self.assertFalse(path.exists())
+
+    async def test_empty_mktemp_database_query_does_not_initialize_schema(self):
+        await self.verify()
+        path = Path(os.environ["CIDERLANE_DATABASE_PATH"])
+        path.touch()
+        result = await self.invoke(check_return_eligibility_tool, {"item_id": "it00004"})
+        self.assertEqual(result["decision"], "standard_return")
+        self.assertEqual(path.read_bytes(), b"")
+
+    async def test_other_item_does_not_reuse_an_existing_return(self):
+        self.create_return()
+        await self.verify()
+        result = await self.invoke(check_return_eligibility_tool, {"item_id": "it00005"})
+        self.assertEqual(result["decision"], "standard_return")
+        self.assertNotIn("label_url", result)
+        self.assertEqual(self.ctx.context.current_evaluation.item_id, "it00005")
+
+    async def test_existing_return_is_not_disclosed_without_matching_verification(self):
+        self.create_return()
+        for order_id, error in ((None, "order_not_verified"), ("CL1001", "order_or_item_not_found")):
+            with self.subTest(order_id=order_id):
+                self.ctx.context = ReturnContext(verified_order_id=order_id)
+                result = await self.invoke(check_return_eligibility_tool, {"item_id": "it00004"})
+                self.assert_not_checked(result, error)
+                self.assertNotIn("label_url", result)
+
+    async def test_corrupt_return_storage_does_not_report_eligibility(self):
+        await self.verify()
+        Path(os.environ["CIDERLANE_DATABASE_PATH"]).write_bytes(b"not a SQLite database")
+        self.ctx.context.current_evaluation = ReturnEvaluation("CL1002", "it00004", "standard_return", ())
+        with patch("src.tools.return_tools.evaluate_return_policy") as policy:
+            result = await self.invoke(check_return_eligibility_tool, {"item_id": "it00004"})
+        self.assert_not_checked(result, "return_storage_unavailable")
+        self.assertIsNone(self.ctx.context.current_evaluation)
+        policy.assert_not_called()
+
+    async def test_pending_label_request_is_not_reported_as_a_created_return(self):
+        initialize_database()
+        reserve_return_label_request("CL1002", "it00004")
+        await self.verify()
+        with closing(connect_database()) as connection:
+            pending = [dict(row) for row in connection.execute("SELECT * FROM return_label_requests")]
+        result = await self.invoke(check_return_eligibility_tool, {"item_id": "it00004"})
+        self.assertEqual(result["decision"], "standard_return")
+        self.assertNotIn("label_url", result)
+        with closing(connect_database()) as connection:
+            self.assertEqual([dict(row) for row in connection.execute("SELECT * FROM return_label_requests")], pending)
+            self.assertEqual(connection.execute("SELECT count(*) FROM returns").fetchone()[0], 0)

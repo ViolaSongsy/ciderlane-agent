@@ -4,7 +4,7 @@ from contextlib import closing
 from datetime import date, datetime
 from typing import Literal
 
-from src.storage import connect_database, initialize_database, reserve_return_label_request
+from src.storage import connect_database, find_return, initialize_database, reserve_return_label_request
 from src.context import ReturnContext, ReturnEvaluation
 from src.return_label_provider import ReturnLabelProviderError, get_return_label_provider
 from src.tools.order_tools import load_orders
@@ -29,7 +29,7 @@ def check_return_eligibility(
     *,
     context: ReturnContext | None = None,
 ) -> dict:
-    """Check an item using only the verified order's stored eligibility facts."""
+    """Read an existing return, or check the verified item's stored eligibility facts."""
     if context is not None:
         context.current_evaluation = None
 
@@ -65,6 +65,13 @@ def check_return_eligibility(
             "status": "eligibility_not_checked",
             "error": "order_or_item_not_found",
         }
+
+    try:
+        existing = find_return(matched_order["order_id"], matched_item["item_id"])
+    except (sqlite3.Error, OSError):
+        return {"status": "eligibility_not_checked", "error": "return_storage_unavailable"}
+    if existing is not None:
+        return {"status": "return_already_exists", **existing}
 
     result = evaluate_return_policy(
         matched_order["delivered_date"],

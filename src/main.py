@@ -58,9 +58,8 @@ def resolve_approvals(result, context: ReturnContext, *, prompt=input):
             else:
                 state.reject(
                     interruption,
-                    rejection_message=("The customer declined this return. Do not call "
-                                       "start_return again for this request. Explain that "
-                                       "no return or label was created."),
+                    rejection_message=("This return approval was rejected. "
+                                       "No return or label was created."),
                 )
         result = Runner.run_sync(ciderlane_agent, state)
     return result

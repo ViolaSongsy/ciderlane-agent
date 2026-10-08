@@ -86,6 +86,24 @@ def connect_database(database_path=None):
     return connection
 
 
+def find_return(order_id: str, item_id: str, *, database_path=None):
+    """Read a completed return without creating a database or initializing schema."""
+    path = resolve_database_path(database_path)
+    if not path.exists():
+        return None
+    with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
+        connection.row_factory = sqlite3.Row
+        # A fresh mktemp file or a database used only for other tables has no returns yet.
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'returns'"
+        ).fetchone() is None:
+            return None
+        row = connection.execute(
+            "SELECT * FROM returns WHERE order_id = ? AND item_id = ?", (order_id, item_id),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+
 def initialize_database(database_path=None):
     with closing(connect_database(database_path)) as connection, connection:
         # Keep the schema check and migration atomic, including concurrent startup.

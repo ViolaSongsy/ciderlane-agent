@@ -1,299 +1,255 @@
-# Tools
+# Tool Contracts
 
-## Tool: verify_order
+Five tools are registered in [agent.py](../src/agent.py). Their model-visible
+wrappers live in [agent_tools.py](../src/agent_tools.py); business implementations
+live in `src/tools/`.
 
-Purpose:
-Verify customer information and order ID, then return the minimum order details needed for a return workflow.
+Tool schemas reject additional properties. `ReturnContext` is application-owned
+and is not a model-visible parameter. It holds `verified_order_id`, a generated
+`conversation_id`, and an immutable `current_evaluation` containing the order,
+item, decision, and canonical policy codes.
 
-Input:
-- order_id
-- email
+| Tool | Model-visible inputs | Approval |
+| --- | --- | --- |
+| `begin_new_order_request` | None; empty object | No |
+| `verify_order` | `order_id`, `email` | No |
+| `check_return_eligibility` | `item_id`, `reason` | No |
+| `start_return` | `item_id`, `reason` | Required by SDK |
+| `request_human_support` | `escalation_reason`, `summary` | No |
 
-Output if verified:
-- verified: true
-- order_id
-- delivered_date
-- items:
-  - item_id
-  - item_name
-  - category
-  - final_sale
+For eligibility and return tools, `reason` is `damaged`, `wrong_item`, `other`, or
+null. Direct Python calls default it to null; strict model-visible schemas require
+both keys, so the model uses null when no reason was supplied.
 
-Output if not verified:
-- verified: false
-- error: "order_not_found" or "email_mismatch"
+## begin_new_order_request
 
-Rules:
-- The agent cannot reveal order information before verifying order ID and email address.
-- The agent cannot start any return before verification.
-
-Example verified output: expired single-item order
-
-```json
-{
-    "verified": true,
-    "order_id": "CL1001",
-    "delivered_date": "2026-07-24",
-    "items":[
-        {
-            "item_id": "it00001",
-            "item_name": "floral long dress",
-            "category": "dress",
-            "final_sale": false
-        }
-    ]
-}
-```
-Example verified output: multi-item order
-
-```json
-{
-    "verified": true,
-    "order_id": "CL1002",
-    "delivered_date": "2026-08-24",
-    "items":[
-        {
-            "item_id": "it00005",
-            "item_name": "floral short dress",
-            "category": "dress",
-            "final_sale": false
-        },
-        {
-            "item_id": "it00002",
-            "item_name": "pink swimsuit",
-            "category": "swimwear",
-            "final_sale": true
-        },
-        {
-            "item_id": "it00003",
-            "item_name": "black pants",
-            "category": "pants",
-            "final_sale": true
-        },
-        {
-            "item_id": "it00004",
-            "item_name": "white short dress",
-            "category": "dress",
-            "final_sale": false
-        }
-    ]
-}
-```
-
-## Tool: check_return_eligibility
-
-Purpose:
-Check whether an item in the verified order can enter the return flow using stored delivery date, category, and final-sale status, plus the return reason.
+Clear previous order authorization after the customer confirms a different order.
+Clarify unclear order scope first; do not use it for the same order or a return retry.
 
 Input:
-- item_id: the selected item ID from the verified order
-- reason: optional; one of "damaged", "wrong_item", "other", or null (defaults to null)
 
-Interface: `check_return_eligibility(item_id, reason=None)`.
-The SDK's strict model-visible schema requires both keys; use null when no reason
-was provided. It exposes no other properties and disallows additional properties.
+```json
+{}
+```
 
-Output if eligibility is checked:
-- decision: "standard_return" or "exception_flow" or "blocked"
-- reasons: list of policy reasons
-- policy_codes: canonical policy findings that contributed to the decision
-
-Output if lookup is rejected:
-- status: "eligibility_not_checked"
-- error: "order_not_verified" or "order_or_item_not_found"
-- No eligibility decision or order details are returned.
-
-Noncanonical reasons are rejected by the tool's input validation. The internal
-lookup also rejects them with `status: "eligibility_not_checked"` and
-`error: "invalid_reason"`.
-
-Rules:
-- The application reads `verified_order_id` from `ReturnContext`; eligibility fails closed if no order is verified.
-- The tool reloads that order from storage and finds `item_id` only within that order. Unknown orders, unknown items, and items from another order are rejected with the same "order_or_item_not_found" error.
-- The delivery date comes from the stored order; category and final-sale status come from its stored item. These facts are not added to context.
-- The model cannot supply or override the order ID, delivery date, category, final-sale status, or verification state through this tool.
-- Before each attempt, the application clears any previous `current_evaluation`. It saves a new trusted evaluation only after the verified order and item are loaded and policy evaluation succeeds. Failed attempts leave it empty.
-- The saved evaluation is immutable. Its policy codes are a tuple; the model-visible output returns the same codes as a JSON-compatible list.
-- Policy codes are emitted directly by deterministic policy logic and are never parsed from reason strings. They record only findings that materially contribute to the decision or its provenance: `outside_return_window`, `final_sale`, `restricted_swimwear`, `damaged_item_exception`, and `wrong_item_exception`. Standard returns have no policy codes.
-- Items delivered more than 30 days ago are blocked.
-- Non-final-sale, non-swimwear items within 30 days can enter standard return.
-- Final sale items are blocked unless the reason is damaged or wrong item.
-- Swimwear items are blocked unless the reason is damaged or wrong item.
-- If the reason is not provided, treat the request as a standard return request.
-- If the customer later says the item was damaged or wrong, the agent can call this tool again with the updated reason.
-- For standard returns, the agent should remind the customer that items must be unworn, unwashed, and have tags attached.
-
-Example input after verifying order CL1002:
+Output:
 
 ```json
 {
-    "item_id": "it00004",
-    "reason": null
+  "status": "new_order_request_started",
+  "verified_order_id": null
 }
 ```
 
-Example output before order verification:
+The wrapper clears `verified_order_id` and `current_evaluation`. It retains the
+conversation ID and does not modify returns, pending label keys, or support cases.
+It does not verify the new order. Wait for its result before verification or an
+unverified support request. The model chooses when to call this tool; there is
+no automatic order-routing controller.
 
-```json
-{
-    "status": "eligibility_not_checked",
-    "error": "order_not_verified"
-}
-```
+## verify_order
 
-Example output: expired return window
-
-```json
-{
-    "decision": "blocked",
-    "policy_codes": ["outside_return_window"],
-    "reasons": [
-        "The item is outside the 30-day return window."
-    ]
-}
-```
-Example output: final sale item
-
-```json
-{
-    "decision": "blocked",
-    "policy_codes": ["final_sale"],
-    "reasons": [
-       "Final sale items cannot be returned unless they arrived damaged or wrong."
-    ]
-}
-```
-
-Example output: swimwear
-
-```json
-{
-    "decision": "blocked",
-    "policy_codes": ["restricted_swimwear"],
-    "reasons": [
-        "Swimwear cannot be returned unless it arrived damaged or wrong."
-    ]
-}
-```
-
-Example output: standard_return
-
-```json
-{
-    "decision": "standard_return",
-    "policy_codes": [],
-    "reasons": [
-       "The item is within the 30-day return window.",
-       "The item is not final sale.",
-       "The item is not restricted swimwear."
-    ]
-}
-```
-
-Example output: exception_flow
-
-```json
-{
-    "decision": "exception_flow",
-    "policy_codes": [
-        "restricted_swimwear",
-        "damaged_item_exception"
-    ],
-    "reasons": [
-        "Damaged or wrong items can enter exception flow even if normally restricted."
-    ]
-}
-```
-
-## Tool: start_return
-
-Purpose:
-Start a requested return with user approval and independent execution-time
-authorization, or retrieve an existing return. No previous eligibility check is required.
+Match the customer's actual order ID and email against the order fixtures.
+Verification precedes order disclosure and item-selection questions.
 
 Input:
-- item_id
-- reason: "damaged", "wrong_item", "other", or null
 
-The strict schema exposes only these two fields. Verification state, order ID,
-decisions, context, and policy facts are application-owned.
+```json
+{"order_id": "CL1002", "email": "maya@example.com"}
+```
 
-Rules:
-- The Agents SDK pauses every start_return call. The CLI offers approval only
-  after resolving the item in the current verified order, and shows its stored
-  name, item ID, order ID, and reason. Unresolved calls are rejected without a
-  prompt. A rejection does not execute the tool or create a return or label.
-  The Runner resumes from its state.
-- After approval, clear the previous current evaluation, require a verified order, validate the
-  reason, reload that order, and validate the selected item's membership.
-- Look up an existing return by (order_id, item_id) before evaluating policy.
-  Return it even if policy has changed; this does not assert current eligibility.
-- For a new return, evaluate current stored facts and save the fresh immutable
-  evaluation. Previous eligibility results never authorize a write.
-- Only standard_return can request a label from the configured HTTP provider.
-  blocked and exception_flow never call it. exception_flow requires a separate request_human_support call
-  with escalation_reason "return_exception", authorized by the fresh evaluation.
-- Before HTTP, reserve and commit one application-generated idempotency key for
-  (order_id, item_id) in return_label_requests. Reuse it for every retry and later
-  invocation. Provider settings and keys are application-owned; HTTP runs outside
-  SQLite transactions.
-- After a valid provider success, insert the completed return and delete its
-  pending request in one transaction. Failure rolls back both changes and keeps
-  the key for recovery, including when the provider succeeded but the local write failed.
-- SQLite stores return_id, order_id, item_id, label_url, and created_at. Its
-  UNIQUE(order_id, item_id) constraint guarantees global idempotency, including
-  retries from other conversations. Recheck for an existing return under a write
-  lock after HTTP, in case another invocation completed it while the request ran.
+| Result | Fields |
+| --- | --- |
+| Success | `verified: true`, `order_id`, `delivered_date`, and `items`. Each item has `item_id`, `item_name`, `category`, and `final_sale`. |
+| Failure | `verified: false`, with `error: order_not_found` or `email_mismatch`. No order contents are returned. |
 
-Outputs:
-- return_created: persisted row plus decision, reasons, and policy_codes.
-- return_already_exists: the existing persisted row and label URL.
-- return_not_created: either a blocked/exception_flow policy result or an error
-  (order_not_verified, invalid_reason, order_or_item_not_found,
-  label_provider_not_configured, label_provider_timeout, label_provider_unavailable,
-  label_provider_http_error, label_provider_invalid_response, or return_storage_unavailable).
+Every attempt first clears previous verification and evaluation. Only a successful
+match sets `verified_order_id`. The model must not invent credentials or submit
+placeholders. If credentials are unavailable, use the verification-support branch
+rather than attempting a fabricated verification. For a confirmed different order,
+reset first, including when verification cannot be attempted.
 
-Provider errors contain a safe code, without credentials or response bodies.
-They never include a success decision or label URL. An existing completed return
-returns return_already_exists without calling the provider.
+The bundled data contains CL1001 and CL1002, both with `maya@example.com`. CL1001
+contains a floral long dress. CL1002 contains a floral short dress, pink swimsuit,
+black pants, and white short dress. Read [orders.json](../data/orders.json) for IDs
+and authoritative facts.
 
-## Tool: request_human_support
+## check_return_eligibility
 
-Purpose:
-Create a persistent support case when a return conversation requires human review.
+Read a completed return or calculate eligibility for an item in the verified order.
+This operation does not create a return or label and requires no customer approval.
 
 Input:
-- escalation_reason: one of "return_exception", "final_sale_dispute", "customer_remains_angry", or "verification_failed"
-- summary: a short description of why human review is required
 
-Interface: `request_human_support(escalation_reason, summary)`. The strict
-model-visible schema exposes only these two fields.
+```json
+{"item_id": "it00004", "reason": null}
+```
 
-Output if created:
-- status: "case_created"
-- case_id
-- escalation_reason
+Execution order:
 
-Output if not created:
-- status: "case_not_created"
-- error
+1. Clear the previous trusted evaluation on entering the business function.
+2. Require an application-owned verified order and validate the canonical reason.
+3. Reload the order and find the item only within it.
+4. Read a completed return by order and item using a read-only SQLite connection.
+5. If one exists, return `return_already_exists` and its persisted fields.
+6. Otherwise, evaluate stored delivery date, category, and final-sale facts, and
+   save a fresh immutable evaluation in context.
 
-Output if the same case is already open:
-- status: "case_already_exists"
-- case_id
-- escalation_reason
+The read does not create a missing database or initialize an empty database's
+schema. A pending label request is not a completed return. Returning an existing
+return leaves `current_evaluation` empty and does not re-evaluate current policy.
 
-Rules:
-- The agent may call this tool only when a defined escalation condition has occurred.
-- A return exception requires a current trusted evaluation with decision "exception_flow".
-- A "final_sale_dispute" case may be created only after
-  `check_return_eligibility` or `start_return` returns "blocked" with the canonical `final_sale`
-  policy code and the customer disputes that decision.
-- A "customer_remains_angry" case requires a current trusted evaluation with decision "blocked".
-- A verification failure does not require eligibility provenance and persists no order, item, or decision. It is rejected if the conversation already has a verified order.
-- The tool must not create a return label.
-- The agent must not claim that a support case was created unless this tool returns "case_created".
-- The application reads `conversation_id` and `current_evaluation` from `ReturnContext`; neither is a model-visible input. For eligibility-dependent cases, persisted order ID, item ID, and decision come only from the trusted current evaluation.
-- Before using an evaluation for escalation, the application requires its order ID to match the order currently verified in the conversation. Missing, stale, or mismatched evaluation state is rejected.
-- If an identical open case exists in the same conversation, return its case ID instead of creating a duplicate. Identical cases in different conversations remain separate.
-- If the tool returns "case_already_exists", the agent must not claim that a new case was created.
+| Result | Fields |
+| --- | --- |
+| Existing return | `status: return_already_exists`, `return_id`, `order_id`, `item_id`, `label_url`, `created_at`. No new `decision`. |
+| Policy evaluated | `decision`, `reasons`, `policy_codes`. |
+| Lookup rejected | `status: eligibility_not_checked`, `error`; no policy decision or label. |
+
+Lookup error codes are `order_not_verified`, `order_or_item_not_found`,
+`invalid_reason`, and `return_storage_unavailable`. Unknown orders, unknown items,
+and items outside the verified order share the same membership error. Invalid
+model inputs can also be rejected by SDK schema validation before execution.
+
+The model cannot supply an order ID, delivery date, category, final-sale flag,
+verification state, or policy decision to this tool.
+
+### Policy decisions
+
+The 30-day window is checked first. Expired items are blocked even when a later
+restriction might otherwise support an exception. Within the window, ordinary
+items receive `standard_return`; final-sale and swimwear items receive `blocked`
+unless reported damaged or wrong, in which case they receive `exception_flow`.
+
+Canonical policy codes are emitted by deterministic logic:
+
+- `outside_return_window`
+- `final_sale`
+- `restricted_swimwear`
+- `damaged_item_exception`
+- `wrong_item_exception`
+
+Codes describe the branch that contributed to the decision. A final-sale swimsuit
+handled by the swimwear branch records `restricted_swimwear`, not `final_sale`.
+Standard returns have no policy codes.
+
+Example new policy result:
+
+```json
+{
+  "decision": "standard_return",
+  "reasons": [
+    "The item is within the 30-day return window.",
+    "The item is not final sale.",
+    "The item is not restricted swimwear."
+  ],
+  "policy_codes": []
+}
+```
+
+## start_return
+
+Execute an approved return request using fresh stored facts, or retrieve an
+existing completed return. No prior eligibility query is required.
+
+Input:
+
+```json
+{"item_id": "it00004", "reason": null}
+```
+
+Every agent-facing invocation pauses for SDK approval. HTTP and CLI first resolve
+the proposed item in the currently verified order and show its stored name, item
+ID, order ID, and reason. Unresolved proposals are rejected. Customer rejection
+skips execution and creates no return or label; a later renewed request needs
+fresh approval. The internal Python business function is not itself an approval
+UI: application entry points must retain the SDK approval boundary.
+
+After approval, execution:
+
+1. Clears prior evaluation, requires verified state, validates the reason, and
+   reloads the order and item.
+2. Retrieves an existing completed return before policy evaluation or provider calls.
+3. For a new return, evaluates current stored facts and saves the trusted result.
+   Only `standard_return` proceeds to label creation.
+4. Reserves and commits one generated idempotency key for the order/item pair.
+5. Calls the configured HTTP provider outside a SQLite transaction, reusing that
+   key for bounded retries and later approved invocations.
+6. Under a write lock, checks whether another invocation completed the return;
+   saves it if needed and removes the pending request in one transaction.
+
+SQLite enforces `UNIQUE(order_id, item_id)` for completed returns, across
+conversations. Provider idempotency is also required: the local constraint does
+not prevent a provider from creating duplicate external labels if it ignores keys.
+
+| Result | Fields |
+| --- | --- |
+| `return_created` | Persisted return fields plus `decision: standard_return`, reasons, and policy codes. |
+| `return_already_exists` | Original persisted return and label, without a new policy decision. |
+| `return_not_created` with policy decision | `blocked` or `exception_flow`, with reasons and policy codes; no new label. |
+| `return_not_created` with error | Safe error code; no successful creation or label. |
+
+Error codes:
+
+- `order_not_verified`
+- `invalid_reason`
+- `order_or_item_not_found`
+- `return_storage_unavailable`
+- `label_provider_not_configured`
+- `label_provider_timeout`
+- `label_provider_unavailable`
+- `label_provider_http_error`
+- `label_provider_invalid_response`
+
+Provider errors omit credentials and response bodies. Transient failures preserve
+the committed key; even a successful provider call followed by a failed local
+transaction can be retried with it. A later attempt rechecks current policy before
+retrying. Existing completed returns do not call the provider.
+
+For `exception_flow`, the agent separately calls support with `return_exception`
+using the fresh evaluation. Approval cannot override a blocked or exception result.
+
+## request_human_support
+
+Create or retrieve a persistent case for a defined human-review condition.
+
+Input:
+
+```json
+{
+  "escalation_reason": "return_exception",
+  "summary": "The verified customer's pink swimsuit arrived damaged."
+}
+```
+
+| Reason | Application-owned requirement |
+| --- | --- |
+| `verification_failed` | No currently verified order; no eligibility evaluation required. |
+| `return_exception` | Current evaluation is `exception_flow`. |
+| `final_sale_dispute` | Current evaluation is `blocked` and includes `final_sale`. |
+| `customer_remains_angry` | Current evaluation is `blocked`. |
+
+For eligibility-dependent cases, the evaluation order must match the verified
+order. The application supplies structured order, item, decision, and conversation
+metadata; the model supplies only the reason and a nonempty factual summary.
+Verification cases contain no structured order, item, or eligibility decision.
+
+The model identifies the conversational trigger, such as a dispute or continued
+anger after explanation. The tool checks the corresponding trusted evidence;
+it does not independently interpret the full customer conversation.
+
+| Result | Meaning |
+| --- | --- |
+| `case_created` | New case; includes `case_id` and `escalation_reason`. |
+| `case_already_exists` | Matching open case in this conversation; returns its existing ID. |
+| `case_not_created` | Validation or authorization rejected the request; includes an error code. |
+
+Authorization errors include `unsupported_escalation_reason`, `summary_required`,
+`verification_failure_not_allowed`, `trusted_evaluation_required`,
+`trusted_evaluation_order_mismatch`, `eligibility_decision_not_allowed`, and
+`final_sale_policy_required`.
+
+Cases are deduplicated by conversation, reason, order, item, and decision while
+open. Different conversations may create separate cases for the same issue. The
+tool creates no label and does not approve a return or send an external ticket.
+Report the actual result: a reused case is not a new case, and a rejected request
+must not be presented as a completed handoff.

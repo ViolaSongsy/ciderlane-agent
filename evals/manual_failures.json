@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "4233582",
+  "collection_status": "in_progress",
+  "expectations_status": "draft_pending_joint_review",
+  "cases": [
+    {
+      "id": "MANUAL-001",
+      "title": "Missing order ID after an earlier order was verified",
+      "status": "reported_failure",
+      "preconditions": {
+        "same_conversation": true,
+        "previous_order_id": "CL1002",
+        "previous_order_verified": true,
+        "previous_return_created": null,
+        "approval_action": null
+      },
+      "reported_transcript": [
+        {
+          "role": "user",
+          "content": "I want to return the white short dress from order CL1002."
+        },
+        {
+          "role": "user",
+          "content": "My email is maya@example.com."
+        },
+        {
+          "role": "user",
+          "content": "I want to return the floral short dress. My email is maya@example.com, but I cannot find or provide my order ID."
+        }
+      ],
+      "observed_behavior": "The agent did not create a support case for the later request with an unavailable order ID.",
+      "expected_behavior": [
+        "Clarify whether the floral short dress belongs to CL1002 or a different order when this is unclear.",
+        "If it belongs to a different order and the customer cannot provide that order ID, allow the missing-credentials support path.",
+        "Do not deny support solely because an earlier order in the conversation was verified."
+      ],
+      "missing_details": [
+        "Exact assistant replies for this report.",
+        "Whether the earlier white-dress return was approved, rejected, or created."
+      ]
+    },
+    {
+      "id": "MANUAL-002",
+      "title": "Explicit different order still cannot receive support without its order ID",
+      "status": "reported_failure",
+      "related_case_id": "MANUAL-001",
+      "preconditions": {
+        "same_conversation": true,
+        "previous_order_id": "CL1002",
+        "previous_order_verified": true,
+        "previous_return_created": null,
+        "approval_action": null
+      },
+      "reported_transcript": [
+        {
+          "role": "user",
+          "content": "I want to return the floral short dress. My email is maya@example.com, but I cannot find or provide my order ID."
+        },
+        {
+          "role": "assistant",
+          "content": "I couldn’t create a support case because verification details are required. Human review was not initiated."
+        },
+        {
+          "role": "user",
+          "content": "This dress is from a different order. My email is maya@example.com, but I cannot find or provide that order ID."
+        },
+        {
+          "role": "assistant",
+          "content": "I couldn’t create a support case because the order ID is required for verification. Human review was not initiated."
+        }
+      ],
+      "observed_behavior": "The agent continued to refuse support after the customer explicitly clarified that the dress belonged to a different order.",
+      "expected_behavior": [
+        "Treat the clarified request as belonging to a different, unverified order.",
+        "Create a support case for the unavailable verification information and confirm the case ID after successful creation.",
+        "Do not associate the new request with the previously verified CL1002 order.",
+        "Do not create a return or label for the unverified order."
+      ],
+      "missing_details": [
+        "Exact earlier conversation that verified CL1002.",
+        "Whether any earlier return was approved, rejected, or created."
+      ]
+    },
+    {
+      "id": "MANUAL-003",
+      "title": "Eligibility inquiry after a return was already created",
+      "status": "reported_failure",
+      "preconditions": {
+        "return_created_for_queried_item": true,
+        "order_id": null,
+        "item_name": null,
+        "approval_action": null
+      },
+      "reported_steps": [
+        "Start a return and complete its creation.",
+        "Ask whether the same item can be returned."
+      ],
+      "reported_transcript": [],
+      "observed_behavior": "The agent answered that the item was eligible for return instead of explaining that a return had already been created for it.",
+      "expected_behavior": [
+        "Explain that a return has already been created for this item.",
+        "Provide the existing return ID or label when available.",
+        "Do not imply that a new return still needs to be started or that a second return was created."
+      ],
+      "missing_details": [
+        "Exact user prompts and assistant replies.",
+        "Order ID and item name.",
+        "Approval action and return-creation confirmation.",
+        "Whether the follow-up inquiry was in the same conversation."
+      ]
+    },
+    {
+      "id": "MANUAL-004",
+      "title": "A renewed return request is refused after an earlier rejection",
+      "status": "reported_failure",
+      "preconditions": {
+        "same_conversation": true,
+        "order_id": "CL1002",
+        "item_name": "white short dress",
+        "earlier_approval_rejected": true,
+        "new_return_requested_after_rejection": true,
+        "approve_targets_original_rejected_approval": false
+      },
+      "reported_transcript": [
+        {
+          "role": "user",
+          "content": "I want to return the white short dress from order CL1002."
+        },
+        {
+          "role": "user",
+          "content": "My email is maya@example.com."
+        },
+        {
+          "role": "assistant",
+          "content": "Please approve or reject the return requests below."
+        },
+        {
+          "role": "user",
+          "content": "Reject these returns."
+        },
+        {
+          "role": "assistant",
+          "content": "No return or label was created because the return request was declined."
+        },
+        {
+          "role": "user",
+          "content": "sorry actually return it"
+        },
+        {
+          "role": "assistant",
+          "content": "No problem. The previous return request was declined, so I can’t submit it again for this request. No return or label was created."
+        }
+      ],
+      "observed_behavior": "The agent refused to submit the renewed request because the earlier approval had been rejected, preventing the customer from receiving a fresh approval.",
+      "expected_behavior": [
+        "Recognize the renewed request as referring to the previously selected white short dress.",
+        "Allow the renewed request to receive a fresh approval after the earlier rejection.",
+        "Do not treat the earlier rejection as a permanent prohibition on requesting the return again.",
+        "Create the eligible return and label only after the new approval is accepted.",
+        "Do not create a return or label for the rejected attempt."
+      ],
+      "missing_details": [
+        "Whether the reported rejection line represents an approval-button action or a typed chat message.",
+        "Whether this item already had a persisted return from another test."
+      ]
+    },
+    {
+      "id": "MANUAL-005",
+      "title": "Item selection is requested before verification of a different order",
+      "status": "reported_failure",
+      "possible_preceding_case_id": "MANUAL-004",
+      "preconditions": {
+        "new_order_id": "CL9999",
+        "email": "maya@example.com",
+        "order_exists_in_mock_data": false,
+        "same_conversation_as_manual_004": null
+      },
+      "reported_transcript": [
+        {
+          "role": "user",
+          "content": "I want to return an item from a different order, CL9999. My email is maya@example.com."
+        },
+        {
+          "role": "assistant",
+          "content": "Which item from order CL9999 would you like to return?"
+        },
+        {
+          "role": "user",
+          "content": "what items in?"
+        },
+        {
+          "role": "assistant",
+          "content": "I’ll need to verify order CL9999 first. Which item would you like to return?"
+        },
+        {
+          "role": "user",
+          "content": "white short dress"
+        },
+        {
+          "role": "assistant",
+          "content": "I couldn’t verify that order. Please check the order ID and email and provide them again."
+        }
+      ],
+      "observed_behavior": "The agent asked the customer to select an item before reporting a verification outcome. It repeated the item question when asked about the order contents, and reported verification failure only after the customer named an item.",
+      "expected_behavior": [
+        "Verify the newly supplied order ID and email before requesting item selection from that order.",
+        "For nonexistent order CL9999, immediately report the verification failure and ask the customer to check the order ID and email once.",
+        "Do not reveal or invent order contents before successful verification.",
+        "Do not treat the white short dress from a previously verified order as belonging to CL9999.",
+        "Do not create a return or label for the unverified order."
+      ],
+      "missing_details": [
+        "Whether this sequence directly continued MANUAL-004 in the same conversation.",
+        "Backend tool trace confirming when verification was actually attempted."
+      ]
+    }
+  ]
+}

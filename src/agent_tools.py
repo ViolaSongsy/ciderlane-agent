@@ -12,6 +12,19 @@ from src.tools.return_tools import (
 )
 from src.tools.support_tools import request_human_support
 
+
+@function_tool(name_override="begin_new_order_request")
+def begin_new_order_request_tool(ctx: RunContextWrapper[ReturnContext]) -> dict:
+    """Clear prior verification when the customer confirms a different order.
+
+    Clarify unclear order scope first. Do not use for the same order or a return
+    retry. Wait for this result before verifying or escalating the new order.
+    """
+    ctx.context.verified_order_id = None
+    ctx.context.current_evaluation = None
+    return {"status": "new_order_request_started", "verified_order_id": None}
+
+
 @function_tool(name_override="verify_order")
 def verify_order_tool(
     ctx: RunContextWrapper[ReturnContext],
@@ -22,8 +35,9 @@ def verify_order_tool(
 
     Call only after the customer supplies both actual values; never guess them
     or use empty strings or placeholders. Verification is required before
-    revealing order details or starting a return. If the customer cannot provide
-    either value, call request_human_support with verification_failed directly.
+    asking the customer to select an item or revealing order details. For a
+    different order, begin_new_order_request first. If its credentials are
+    unavailable, use verification_failed support instead of guessing values.
 
     Args:
         order_id: The customer's order ID.
@@ -44,9 +58,11 @@ def check_return_eligibility_tool(
     item_id: str,
     reason: ReturnReason | None = None,
 ) -> dict:
-    """Check an item in the verified order using its stored eligibility facts.
+    """Read an existing return or check the verified item's stored eligibility facts.
 
-    Call verify_order first to verify the order for this conversation.
+    Call verify_order first. Returns return_already_exists with its original
+    label when a return is saved; otherwise checks eligibility. Does not create
+    a return or label.
 
     Args:
         item_id: The selected item ID from the verified order.
@@ -96,8 +112,9 @@ def request_human_support_tool(
 ) -> dict:
     """Create or retrieve a persistent case for required human review.
 
-    If the customer cannot provide the order ID or email, use verification_failed
-    directly. This escalation does not require calling verify_order first.
+    For unavailable credentials, use verification_failed only when the active
+    order is unverified. For a confirmed different order, wait for
+    begin_new_order_request first. A failed verify_order call is not required.
 
     Args:
         escalation_reason: The canonical reason that human review is required.
