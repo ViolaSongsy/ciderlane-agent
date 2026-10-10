@@ -14,24 +14,6 @@ A multi-turn customer support AI agent for a fictional fashion retailer. It help
 - **Authorized escalation:** Human support cases use application-owned evaluation evidence and are deduplicated within a conversation.
 - **Failure-driven evaluation:** Manual conversation failures feed multi-turn regression scenarios that inspect tool calls, approval decisions, response meaning, and database side effects.
 
-## Architecture
-
-```mermaid
-flowchart LR
-    Client[Browser / CLI] --> Session[Session + SDK runner]
-    Session --> Agent[LLM: intent and tool selection]
-    Agent --> Tools[Python business tools]
-    Agent -->|start_return| Approval[SDK approval gate]
-    Tools --> Facts[Order fixtures]
-    Tools --> DB[(SQLite)]
-    Approval -->|approved| Execute[Recheck policy and execute]
-    Execute --> Facts
-    Execute --> DB
-    Execute --> Provider[HTTP label provider]
-```
-
-The model drives the dialogue; the application enforces verification, policy, approval, and write-time safeguards. Conversation routing remains model-dependent and is evaluated rather than enforced by a deterministic controller.
-
 ## Run the browser demo
 
 Requires **Python 3.11**, **SQLite 3.35+**, and an OpenAI API key with access to the configured agent model (`gpt-5.6-luna`). From the repository root:
