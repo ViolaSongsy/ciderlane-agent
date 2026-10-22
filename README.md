@@ -6,6 +6,16 @@ A multi-turn customer support AI agent for a fictional fashion retailer. It help
 
 **Engineering focus:** How can an LLM handle flexible conversations without being trusted to authorize business operations or external side effects?
 
+[Walkthrough](docs/demo.md) · [Design decisions](docs/engineering-notes.md) · [Run locally](#run-the-browser-demo) · [MIT license](LICENSE)
+
+## See the workflow
+
+![A verified item waits for explicit customer approval](docs/assets/return-approval.jpg)
+
+The assistant verifies an order, identifies the item, and pauses for the customer to approve or reject the return. Python rechecks policy before creating a return or calling the label provider. [See the completed flow and rejection path](docs/demo.md).
+
+Screenshots show the real browser UI and SDK approval flow with synthetic fixtures, a **scripted model**, and a mock HTTP label provider. They illustrate interaction and business-state handling, not live-model reasoning or a production service.
+
 ## Engineering highlights
 
 - **Trusted business state:** The LLM selects tools and supplies an item ID/reason; Python owns verified order identity, policy facts, and eligibility decisions. Tools reject unverified or mismatched items.
@@ -74,3 +84,7 @@ These results cover the recorded cases, not all possible conversations. See the 
 This is a **local demo with synthetic order data**, not a production deployment. Browser sessions and pending approvals are process-local (one worker); SQLite persists business records when configured with a stable database path. There is no production authentication, real shipping-label or ticketing integration, or operational monitoring.
 
 For implementation details, see [agent trust boundaries](docs/agent-boundary.md), [return workflow](docs/return-workflow.md), [tool contracts](docs/tools.md), and [engineering decisions and recovery](docs/engineering-notes.md).
+
+## License
+
+[MIT](LICENSE) © 2026 ViolaSongsy. Ciderlane is a fictional retailer; sample orders and label URLs are demo fixtures.
